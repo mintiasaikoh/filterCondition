@@ -21,11 +21,11 @@ export class ConditionForm {
     private logicWrap: HTMLElement;
     private logicSelect: HTMLSelectElement;
     private addBtn: HTMLButtonElement;
+    private applyBtn: HTMLButtonElement;
 
     private conditions: FilterCondition[] = [];
     private logic: GlobalLogic = "AND";
     private columns: ColumnOption[] = [];
-    private emitScheduled = false;
 
     constructor(container: HTMLElement, private cb: ConditionFormCallbacks) {
         this.root = document.createElement("div");
@@ -67,9 +67,15 @@ export class ConditionForm {
         this.logicSelect.value = this.logic;
         this.logicSelect.onchange = () => {
             this.logic = (this.logicSelect.value === "OR" ? "OR" : "AND");
-            this.scheduleEmit();
         };
         this.logicWrap.appendChild(this.logicSelect);
+
+        this.applyBtn = document.createElement("button");
+        this.applyBtn.type = "button";
+        this.applyBtn.className = "fc-apply-btn";
+        this.applyBtn.textContent = "適用";
+        this.applyBtn.onclick = () => this.cb.onChange();
+        footer.appendChild(this.applyBtn);
     }
 
     setColumns(cols: powerbi.DataViewMetadataColumn[]): void {
@@ -114,16 +120,6 @@ export class ConditionForm {
             if ((count.get(col.index) ?? 0) < MAX_PER_COLUMN) return col.index;
         }
         return -1;
-    }
-
-    private scheduleEmit(): void {
-        if (this.emitScheduled) return;
-        this.emitScheduled = true;
-        // 入力確定を待つため次のタスクで発火
-        setTimeout(() => {
-            this.emitScheduled = false;
-            this.cb.onChange();
-        }, 0);
     }
 
     private render(): void {
@@ -188,7 +184,6 @@ export class ConditionForm {
         colSel.onchange = () => {
             cond.columnIndex = parseInt(colSel.value, 10);
             this.render();
-            this.scheduleEmit();
         };
         row.appendChild(colSel);
 
@@ -204,7 +199,6 @@ export class ConditionForm {
         }
         opSel.onchange = () => {
             cond.operator = opSel.value as FilterOp;
-            this.scheduleEmit();
         };
         row.appendChild(opSel);
 
@@ -214,19 +208,13 @@ export class ConditionForm {
         input.className = "fc-val-input";
         input.placeholder = "値を入力";
         input.value = cond.value;
-        let tid: number | null = null;
-        input.oninput = () => {
-            cond.value = input.value;
-            if (tid !== null) window.clearTimeout(tid);
-            tid = window.setTimeout(() => {
-                tid = null;
-                this.scheduleEmit();
-            }, 250);
-        };
-        input.onchange = () => {
-            cond.value = input.value;
-            if (tid !== null) { window.clearTimeout(tid); tid = null; }
-            this.scheduleEmit();
+        input.oninput = () => { cond.value = input.value; };
+        input.onchange = () => { cond.value = input.value; };
+        input.onkeydown = (e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+                cond.value = input.value;
+                this.cb.onChange();
+            }
         };
         row.appendChild(input);
 
@@ -239,7 +227,6 @@ export class ConditionForm {
         del.onclick = () => {
             this.conditions.splice(idx, 1);
             this.render();
-            this.scheduleEmit();
         };
         row.appendChild(del);
 

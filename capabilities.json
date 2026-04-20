@@ -1,0 +1,44 @@
+{
+    "dataRoles": [
+        {
+            "displayName": "列",
+            "name": "values",
+            "kind": "GroupingOrMeasure"
+        }
+    ],
+    "objects": {
+        "general": {
+            "properties": {
+                "filter": { "type": { "filter": true } }
+            }
+        },
+        "state": {
+            "properties": {
+                "conditionsJson": { "type": { "text": true } },
+                "logic":          { "type": { "text": true } }
+            }
+        },
+        "appearance": {
+            "properties": {
+                "fontFamily":     { "type": { "formatting": { "fontFamily": true } } },
+                "fontSize":       { "type": { "formatting": { "fontSize": true } } },
+                "accentColor":    { "type": { "fill": { "solid": { "color": true } } } },
+                "fontColor":      { "type": { "fill": { "solid": { "color": true } } } },
+                "backgroundColor":{ "type": { "fill": { "solid": { "color": true } } } }
+            }
+        }
+    },
+    "dataViewMappings": [
+        {
+            "table": {
+                "rows": {
+                    "for": { "in": "values" },
+                    "dataReductionAlgorithm": { "top": { "count": 1 } }
+                }
+            }
+        }
+    ],
+    "supportsHighlight": false,
+    "supportsSynchronizingFilterState": true,
+    "privileges": []
+}

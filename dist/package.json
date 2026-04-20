@@ -1,0 +1,17 @@
+{
+		"version": "1.0.0.0",
+		"author": {"name":"mintiasaikoh","email":"yasunoritani@gmail.com"},
+		"resources": [
+			{
+				"resourceId": "rId0",
+				"sourceType": 5,
+				"file": "resources/filterConditionVisual.pbiviz.json"
+			}
+		],
+		"visual": {"name":"filterCondition","displayName":"条件フィルター","guid":"filterConditionVisual","visualClassName":"Visual","version":"1.0.0.0","description":"contains / notContains 条件でクロスページフィルターを発火する軽量フォーム","supportUrl":"https://github.com/mintiasaikoh/filterCondition/issues","gitHubUrl":"https://github.com/mintiasaikoh/filterCondition"},
+		"metadata": {
+			"pbivizjson": {
+				"resourceId": "rId0"
+			}
+		}
+	}

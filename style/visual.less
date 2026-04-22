@@ -39,6 +39,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-wrap: wrap;
 }
 
 .fc-col-sel, .fc-op-sel, .fc-logic-sel {
@@ -49,19 +50,21 @@
     background: #fff;
     border-radius: 3px;
     cursor: pointer;
+    max-width: 100%;
 }
 
-.fc-col-sel { flex: 1 1 auto; min-width: 80px; }
-.fc-op-sel  { flex: 0 0 auto; }
+.fc-col-sel { flex: 1 1 120px; min-width: 80px; }
+.fc-op-sel  { flex: 0 1 auto; min-width: 60px; }
 
 .fc-val-input {
-    flex: 2 1 auto;
+    flex: 2 1 120px;
     font: inherit;
     color: var(--fc-fg);
     padding: 3px 6px;
     border: 1px solid #d0d0d0;
     border-radius: 3px;
-    min-width: 60px;
+    min-width: 80px;
+    max-width: 100%;
     background: #fff;
 }
 
@@ -98,6 +101,7 @@
     padding-top: 4px;
     border-top: 1px solid #f0f0f0;
     margin-top: 2px;
+    flex-wrap: wrap;
 }
 
 .fc-add-btn {

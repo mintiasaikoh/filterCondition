@@ -26,6 +26,7 @@ export class ConditionForm {
     private conditions: FilterCondition[] = [];
     private logic: GlobalLogic = "AND";
     private columns: ColumnOption[] = [];
+    private initialized = false;
 
     constructor(container: HTMLElement, private cb: ConditionFormCallbacks) {
         this.root = document.createElement("div");
@@ -86,6 +87,17 @@ export class ConditionForm {
         // 既存条件で列 index が範囲外なら削除
         const valid = this.columns.map(c => c.index);
         this.conditions = this.conditions.filter(c => valid.includes(c.columnIndex));
+
+        // 初回列バインド時、条件がゼロならデフォルト行を 1 つ出しておく
+        if (!this.initialized && this.columns.length > 0 && this.conditions.length === 0) {
+            this.conditions.push({
+                columnIndex: this.columns[0].index,
+                operator: "contains",
+                value: "",
+            });
+        }
+        if (this.columns.length > 0) this.initialized = true;
+
         this.render();
     }
 
@@ -93,6 +105,7 @@ export class ConditionForm {
         this.conditions = conditions.map(c => ({ ...c }));
         this.logic = logic;
         this.logicSelect.value = logic;
+        this.initialized = true;
         this.render();
     }
 

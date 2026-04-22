@@ -71,12 +71,36 @@ export class ConditionForm {
         };
         this.logicWrap.appendChild(this.logicSelect);
 
+        const clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "fc-clear-btn";
+        clearBtn.textContent = "クリア";
+        clearBtn.onclick = () => this.onClearAll();
+        footer.appendChild(clearBtn);
+
         this.applyBtn = document.createElement("button");
         this.applyBtn.type = "button";
         this.applyBtn.className = "fc-apply-btn";
         this.applyBtn.textContent = "適用";
         this.applyBtn.onclick = () => this.cb.onChange();
         footer.appendChild(this.applyBtn);
+    }
+
+    private onClearAll(): void {
+        // 値だけクリア。1 行目は残して列選択状態を維持
+        if (this.columns.length > 0) {
+            this.conditions = [{
+                columnIndex: this.columns[0].index,
+                operator: "contains",
+                value: "",
+            }];
+        } else {
+            this.conditions = [];
+        }
+        this.logic = "AND";
+        this.logicSelect.value = "AND";
+        this.render();
+        this.cb.onChange();
     }
 
     setColumns(cols: powerbi.DataViewMetadataColumn[]): void {

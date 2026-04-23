@@ -53,7 +53,8 @@ export class Visual implements IVisual {
         this.applyAppearance();
 
         const cols = dv?.table?.columns ?? [];
-        this.form.setColumns(cols);
+        const uniques = this.extractUniques(dv);
+        this.form.setColumns(cols, uniques);
 
         // 永続化された条件を初回復元
         if (!this.persistedSeen) {
@@ -153,6 +154,24 @@ export class Visual implements IVisual {
     }
 
     // ==========================================================
+
+    private extractUniques(dv: DataView | null): string[][] {
+        const cols = dv?.table?.columns ?? [];
+        const rows = dv?.table?.rows ?? [];
+        const LIMIT = 15;
+        return cols.map((_, ci) => {
+            const set = new Set<string>();
+            for (const r of rows) {
+                const v = r[ci];
+                if (v == null) continue;
+                const s = String(v);
+                if (s === "") continue;
+                set.add(s);
+                if (set.size >= LIMIT) break;
+            }
+            return Array.from(set).sort();
+        });
+    }
 
     private applyAppearance(): void {
         const a = this.formattingSettings?.appearanceCard;

@@ -26,6 +26,8 @@ export class ConditionForm {
     private conditions: FilterCondition[] = [];
     private logic: GlobalLogic = "AND";
     private columns: ColumnOption[] = [];
+    private uniquesPerCol: string[][] = [];
+    private datalistHost: HTMLElement;
     private initialized = false;
 
     constructor(container: HTMLElement, private cb: ConditionFormCallbacks) {
@@ -36,6 +38,11 @@ export class ConditionForm {
         this.rowsHost = document.createElement("div");
         this.rowsHost.className = "fc-rows";
         this.root.appendChild(this.rowsHost);
+
+        this.datalistHost = document.createElement("div");
+        this.datalistHost.className = "fc-datalists";
+        this.datalistHost.style.display = "none";
+        this.root.appendChild(this.datalistHost);
 
         const footer = document.createElement("div");
         footer.className = "fc-footer";
@@ -103,11 +110,13 @@ export class ConditionForm {
         this.cb.onChange();
     }
 
-    setColumns(cols: powerbi.DataViewMetadataColumn[]): void {
+    setColumns(cols: powerbi.DataViewMetadataColumn[], uniquesPerCol: string[][] = []): void {
         this.columns = cols.map((c, i) => ({
             index: i,
             label: c?.displayName ?? `列 ${i + 1}`,
         }));
+        this.uniquesPerCol = uniquesPerCol;
+        this.rebuildDatalists();
         // 既存条件で列 index が範囲外なら削除
         const valid = this.columns.map(c => c.index);
         this.conditions = this.conditions.filter(c => valid.includes(c.columnIndex));
@@ -245,6 +254,8 @@ export class ConditionForm {
         input.className = "fc-val-input";
         input.placeholder = "値を入力";
         input.value = cond.value;
+        const listId = this.datalistIdFor(cond.columnIndex);
+        if (listId) input.setAttribute("list", listId);
         input.oninput = () => { cond.value = input.value; };
         input.onchange = () => { cond.value = input.value; };
         input.onkeydown = (e: KeyboardEvent) => {
@@ -268,6 +279,27 @@ export class ConditionForm {
         row.appendChild(del);
 
         return row;
+    }
+
+    private datalistIdFor(colIdx: number): string | null {
+        const uniques = this.uniquesPerCol[colIdx];
+        if (!uniques || uniques.length === 0) return null;
+        return `fc-vals-${colIdx}`;
+    }
+
+    private rebuildDatalists(): void {
+        while (this.datalistHost.firstChild) this.datalistHost.removeChild(this.datalistHost.firstChild);
+        this.uniquesPerCol.forEach((vals, ci) => {
+            if (!vals || vals.length === 0) return;
+            const dl = document.createElement("datalist");
+            dl.id = `fc-vals-${ci}`;
+            for (const v of vals) {
+                const opt = document.createElement("option");
+                opt.value = v;
+                dl.appendChild(opt);
+            }
+            this.datalistHost.appendChild(dl);
+        });
     }
 
     private colUsageExcluding(excludeIdx: number): Map<number, number> {

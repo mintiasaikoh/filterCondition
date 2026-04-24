@@ -53,7 +53,8 @@ export class Visual implements IVisual {
         this.applyAppearance();
 
         const cols = dv?.table?.columns ?? [];
-        const uniques = this.extractUniques(dv);
+        const targetName = String(this.formattingSettings?.suggestionsCard?.targetColumnName?.value ?? "").trim();
+        const uniques = this.extractUniques(dv, targetName);
         this.form.setColumns(cols, uniques);
 
         // 永続化された条件を初回復元
@@ -159,11 +160,13 @@ export class Visual implements IVisual {
 
     // ==========================================================
 
-    private extractUniques(dv: DataView | null): string[][] {
+    private extractUniques(dv: DataView | null, targetName: string): string[][] {
         const cols = dv?.table?.columns ?? [];
         const rows = dv?.table?.rows ?? [];
         const LIMIT = 15;
-        return cols.map((_, ci) => {
+        if (!targetName) return cols.map(() => []);
+        return cols.map((c, ci) => {
+            if ((c?.displayName ?? "") !== targetName) return [];
             const set = new Set<string>();
             for (const r of rows) {
                 const v = r[ci];

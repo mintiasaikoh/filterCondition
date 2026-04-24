@@ -18,6 +18,11 @@
                 "logic":          { "type": { "text": true } }
             }
         },
+        "suggestions": {
+            "properties": {
+                "targetColumnName": { "type": { "text": true } }
+            }
+        },
         "appearance": {
             "properties": {
                 "fontFamily":     { "type": { "formatting": { "fontFamily": true } } },
@@ -33,7 +38,7 @@
             "table": {
                 "rows": {
                     "for": { "in": "values" },
-                    "dataReductionAlgorithm": { "top": { "count": 1 } }
+                    "dataReductionAlgorithm": { "top": { "count": 1000 } }
                 }
             }
         }

@@ -173,6 +173,7 @@ export class Visual implements IVisual {
                 if (v == null) continue;
                 const s = String(v);
                 if (s === "") continue;
+                if (s.toUpperCase().includes("TEST")) continue;
                 set.add(s);
                 if (set.size >= LIMIT) break;
             }

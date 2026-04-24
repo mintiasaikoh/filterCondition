@@ -94,7 +94,12 @@ export class ConditionForm {
     }
 
     private onClearAll(): void {
-        // 値だけクリア。1 行目は残して列選択状態を維持
+        this.resetToDefault();
+        this.cb.onChange();
+    }
+
+    /** UI を「1 行空の条件」状態に戻す（発火しない）。ブックマーク等の外部 filter 解除からも呼ばれる */
+    public resetToDefault(): void {
         if (this.columns.length > 0) {
             this.conditions = [{
                 columnIndex: this.columns[0].index,
@@ -107,7 +112,6 @@ export class ConditionForm {
         this.logic = "AND";
         this.logicSelect.value = "AND";
         this.render();
-        this.cb.onChange();
     }
 
     setColumns(cols: powerbi.DataViewMetadataColumn[], uniquesPerCol: string[][] = []): void {

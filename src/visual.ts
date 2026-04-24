@@ -144,7 +144,7 @@ export class Visual implements IVisual {
         if (!restored) {
             if (this.lastFilterSig !== "") {
                 this.lastFilterSig = "";
-                this.form.setState([], "AND");
+                this.form.resetToDefault();
             }
             return;
         }

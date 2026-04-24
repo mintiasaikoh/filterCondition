@@ -164,9 +164,12 @@ export class Visual implements IVisual {
         const cols = dv?.table?.columns ?? [];
         const rows = dv?.table?.rows ?? [];
         const LIMIT = 15;
-        if (!targetName) return cols.map(() => []);
+        const targets = new Set(
+            targetName.split(",").map(s => s.trim()).filter(s => s.length > 0)
+        );
+        if (targets.size === 0) return cols.map(() => []);
         return cols.map((c, ci) => {
-            if ((c?.displayName ?? "") !== targetName) return [];
+            if (!targets.has(c?.displayName ?? "")) return [];
             const set = new Set<string>();
             for (const r of rows) {
                 const v = r[ci];

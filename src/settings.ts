@@ -51,9 +51,9 @@ class SuggestionsCard extends FormattingSettingsCard {
 
     targetColumnName = new formattingSettings.TextInput({
         name: "targetColumnName",
-        displayName: "候補を表示する列名",
+        displayName: "候補を表示する列名（カンマ区切りで複数可）",
         value: "",
-        placeholder: "例: 組織名",
+        placeholder: "例: 組織名, 部署",
     });
 
     slices: FormattingSettingsSlice[] = [this.targetColumnName];

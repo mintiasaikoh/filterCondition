@@ -11,7 +11,7 @@ import DataView = powerbi.DataView;
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 
 import { ConditionForm } from "./conditionForm";
-import { FilterCondition, isConditionActive } from "./filterEngine";
+import { FilterCondition } from "./filterEngine";
 import {
     emitAdvancedFilter,
     restoreFromAdvancedFilters,
@@ -139,17 +139,21 @@ export class Visual implements IVisual {
         cols: powerbi.DataViewMetadataColumn[],
     ): void {
         const restored = restoreFromAdvancedFilters(jsonFilters, cols);
-        if (!restored) return;
+
+        // ブックマーク / 外部スライサーで自分の filter が解除された場合は UI をリセット
+        if (!restored) {
+            if (this.lastFilterSig !== "") {
+                this.lastFilterSig = "";
+                this.form.setState([], "AND");
+            }
+            return;
+        }
 
         // 自己発火エコーは skip
         if (restored.sig === this.lastFilterSig) return;
 
-        // UI 未タッチの場合のみ上書き
-        const current = this.form.getConditions();
-        const uiIsEmpty = current.length === 0 || current.every(c => !isConditionActive(c));
-        if (uiIsEmpty) {
-            this.form.setState(restored.conditions, restored.logic);
-        }
+        // 有効な active 条件が入ってきたら UI を上書き（ブックマーク含む）
+        this.form.setState(restored.conditions, restored.logic);
         this.lastFilterSig = restored.sig;
     }
 

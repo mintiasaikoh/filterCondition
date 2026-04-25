@@ -243,8 +243,8 @@ export class ConditionForm {
         for (const [v, label] of [
             ["contains", "含む"],
             ["notContains", "含まない"],
-            ["gte", "≧"],
-            ["lte", "≦"],
+            ["gte", "以上"],
+            ["lte", "以下"],
         ] as [FilterOp, string][]) {
             const opt = document.createElement("option");
             opt.value = v;

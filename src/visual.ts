@@ -122,7 +122,7 @@ export class Visual implements IVisual {
                 const op = r.operator;
                 const val = String(r.value ?? "");
                 if (!Number.isFinite(ci)) continue;
-                if (op !== "contains" && op !== "notContains") continue;
+                if (op !== "contains" && op !== "notContains" && op !== "gte" && op !== "lte") continue;
                 conds.push({ columnIndex: ci, operator: op, value: val });
             }
             this.form.setState(conds, logic);

@@ -240,7 +240,12 @@ export class ConditionForm {
         // 演算子
         const opSel = document.createElement("select");
         opSel.className = "fc-op-sel";
-        for (const [v, label] of [["contains", "含む"], ["notContains", "含まない"]] as [FilterOp, string][]) {
+        for (const [v, label] of [
+            ["contains", "含む"],
+            ["notContains", "含まない"],
+            ["gte", "≧"],
+            ["lte", "≦"],
+        ] as [FilterOp, string][]) {
             const opt = document.createElement("option");
             opt.value = v;
             opt.textContent = label;

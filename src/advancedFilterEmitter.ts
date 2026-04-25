@@ -62,7 +62,16 @@ export function emitAdvancedFilter(
     const opMap = (op: FilterOp): AdvancedFilterConditionOperators | null => {
         if (op === "contains")    return "Contains";
         if (op === "notContains") return "DoesNotContain";
+        if (op === "gte")         return "GreaterThanOrEqual";
+        if (op === "lte")         return "LessThanOrEqual";
         return null;
+    };
+
+    /** 数値・日付演算子は数値化を試みる。失敗時は文字列のまま渡す */
+    const coerceValue = (op: FilterOp, raw: string): string | number => {
+        if (op !== "gte" && op !== "lte") return raw;
+        const n = Number(raw);
+        return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
     };
 
     const logical: AdvancedFilterLogicalOperators = globalLogic === "OR" ? "Or" : "And";
@@ -82,8 +91,9 @@ export function emitAdvancedFilter(
         for (const c of condList) {
             const op = opMap(c.operator);
             if (!op) continue;
-            advConds.push({ operator: op, value: c.value } as unknown as IAdvancedFilterCondition);
-            sigItems.push(`${op}:${c.value}`);
+            const val = coerceValue(c.operator, c.value);
+            advConds.push({ operator: op, value: val } as unknown as IAdvancedFilterCondition);
+            sigItems.push(`${op}:${val}`);
         }
         if (advConds.length === 0) continue;
 
@@ -128,8 +138,10 @@ export function restoreFromAdvancedFilters(
     if (advanced.length === 0) return null;
 
     const opMapIn = (op: string): FilterOp | null => {
-        if (op === "Contains")       return "contains";
-        if (op === "DoesNotContain") return "notContains";
+        if (op === "Contains")           return "contains";
+        if (op === "DoesNotContain")     return "notContains";
+        if (op === "GreaterThanOrEqual") return "gte";
+        if (op === "LessThanOrEqual")    return "lte";
         return null;
     };
 

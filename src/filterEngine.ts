@@ -7,7 +7,7 @@ import { IFilterColumnTarget } from "powerbi-models";
 // 共有型
 // ==========================================================
 
-export type FilterOp = "contains" | "notContains";
+export type FilterOp = "contains" | "notContains" | "gte" | "lte";
 
 export interface FilterCondition {
     columnIndex: number;

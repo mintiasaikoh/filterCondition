@@ -170,7 +170,8 @@ export class Visual implements IVisual {
         if (targets.size === 0) return cols.map(() => []);
         return cols.map((c, ci) => {
             if (!targets.has(c?.displayName ?? "")) return [];
-            const set = new Set<string>();
+            // 全行で出現回数を数え、頻度の少ない順に LIMIT 件
+            const counts = new Map<string, number>();
             for (const r of rows) {
                 const v = r[ci];
                 if (v == null) continue;
@@ -178,10 +179,12 @@ export class Visual implements IVisual {
                 if (s === "") continue;
                 if (s.toUpperCase().includes("TEST")) continue;
                 if (s.includes("ダミー")) continue;
-                set.add(s);
-                if (set.size >= LIMIT) break;
+                counts.set(s, (counts.get(s) ?? 0) + 1);
             }
-            return Array.from(set).sort();
+            return Array.from(counts.entries())
+                .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+                .slice(0, LIMIT)
+                .map(e => e[0]);
         });
     }
 

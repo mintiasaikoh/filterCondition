@@ -23,6 +23,7 @@ import {
 } from "./filterEngine";
 
 export type GlobalLogic = "AND" | "OR";
+export type ColumnLogic = Record<string, GlobalLogic>;
 
 const SIG_PREFIX = "ADV|";
 
@@ -31,15 +32,18 @@ export interface EmitResult {
     emitted: boolean;  // 実際に applyJsonFilter を呼んだか
 }
 
+const logicFor = (logic: ColumnLogic, ci: number): GlobalLogic =>
+    (logic[String(ci)] === "OR" ? "OR" : "AND");
+
 /**
  * 条件から AdvancedFilter を組み立てて発火。
- * 列内の logicalOperator は globalLogic に従う（列間は Power BI が暗黙 AND で結合）。
+ * 列ごとの logicalOperator は columnLogic で個別指定（列間は Power BI が暗黙 AND で結合）。
  */
 export function emitAdvancedFilter(
     host: IVisualHost,
     cols: powerbi.DataViewMetadataColumn[],
     conds: FilterCondition[],
-    globalLogic: GlobalLogic,
+    columnLogic: ColumnLogic,
     lastSig: string,
 ): EmitResult {
     const active = conds.filter(isConditionActive);
@@ -74,8 +78,6 @@ export function emitAdvancedFilter(
         return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
     };
 
-    const logical: AdvancedFilterLogicalOperators = globalLogic === "OR" ? "Or" : "And";
-
     const filters: AdvancedFilter[] = [];
     const sigParts: string[] = [];
 
@@ -96,6 +98,9 @@ export function emitAdvancedFilter(
             sigItems.push(`${op}:${val}`);
         }
         if (advConds.length === 0) continue;
+
+        const logical: AdvancedFilterLogicalOperators =
+            logicFor(columnLogic, ci) === "OR" ? "Or" : "And";
 
         filters.push(new AdvancedFilter(target, logical, ...advConds));
         sigParts.push(filterConditionSignature(target, logical, sigItems));
@@ -120,7 +125,7 @@ export function emitAdvancedFilter(
 
 export interface RestoredFilterState {
     conditions: FilterCondition[];
-    logic: GlobalLogic;
+    columnLogic: ColumnLogic;
     sig: string;
 }
 
@@ -149,7 +154,7 @@ export function restoreFromAdvancedFilters(
     interface Restored { colIdx: number; logic: AdvancedFilterLogicalOperators; conds: RestoredCond[]; sig: string; }
 
     const restored: Restored[] = [];
-    let globalLogic: GlobalLogic = "AND";
+    const columnLogic: ColumnLogic = {};
 
     for (const af of advanced) {
         const tgt = af.target as IFilterColumnTarget;
@@ -174,7 +179,7 @@ export function restoreFromAdvancedFilters(
 
         const kept = condsRaw.slice(0, 2);
         const logic = (af.logicalOperator || "And") as AdvancedFilterLogicalOperators;
-        if (kept.length >= 2) globalLogic = logic === "Or" ? "OR" : "AND";
+        if (kept.length >= 2) columnLogic[String(colIdx)] = logic === "Or" ? "OR" : "AND";
 
         restored.push({
             colIdx, logic, conds: kept,
@@ -191,5 +196,5 @@ export function restoreFromAdvancedFilters(
     }
 
     const sig = SIG_PREFIX + restored.map(r => r.sig).sort().join("|");
-    return { conditions, logic: globalLogic, sig };
+    return { conditions, columnLogic, sig };
 }

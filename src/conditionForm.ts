@@ -2,7 +2,7 @@
 
 import powerbi from "powerbi-visuals-api";
 import { FilterCondition, FilterOp } from "./filterEngine";
-import { GlobalLogic } from "./advancedFilterEmitter";
+import { ColumnLogic, GlobalLogic } from "./advancedFilterEmitter";
 
 export interface ConditionFormCallbacks {
     onChange: () => void;
@@ -18,13 +18,11 @@ const MAX_PER_COLUMN = 2;
 export class ConditionForm {
     private root: HTMLElement;
     private rowsHost: HTMLElement;
-    private logicWrap: HTMLElement;
-    private logicSelect: HTMLSelectElement;
     private addBtn: HTMLButtonElement;
     private applyBtn: HTMLButtonElement;
 
     private conditions: FilterCondition[] = [];
-    private logic: GlobalLogic = "AND";
+    private columnLogic: ColumnLogic = {};
     private columns: ColumnOption[] = [];
     private uniquesPerCol: string[][] = [];
     private datalistHost: HTMLElement;
@@ -54,29 +52,6 @@ export class ConditionForm {
         this.addBtn.textContent = "+ 条件追加";
         this.addBtn.onclick = () => this.onAddCondition();
         footer.appendChild(this.addBtn);
-
-        this.logicWrap = document.createElement("div");
-        this.logicWrap.className = "fc-logic";
-        footer.appendChild(this.logicWrap);
-
-        const logicLabel = document.createElement("span");
-        logicLabel.textContent = "列内論理:";
-        logicLabel.className = "fc-logic-label";
-        this.logicWrap.appendChild(logicLabel);
-
-        this.logicSelect = document.createElement("select");
-        this.logicSelect.className = "fc-logic-sel";
-        for (const v of ["AND", "OR"] as GlobalLogic[]) {
-            const opt = document.createElement("option");
-            opt.value = v;
-            opt.textContent = v;
-            this.logicSelect.appendChild(opt);
-        }
-        this.logicSelect.value = this.logic;
-        this.logicSelect.onchange = () => {
-            this.logic = (this.logicSelect.value === "OR" ? "OR" : "AND");
-        };
-        this.logicWrap.appendChild(this.logicSelect);
 
         const clearBtn = document.createElement("button");
         clearBtn.type = "button";
@@ -109,9 +84,13 @@ export class ConditionForm {
         } else {
             this.conditions = [];
         }
-        this.logic = "AND";
-        this.logicSelect.value = "AND";
+        this.columnLogic = {};
         this.render();
+    }
+
+    /** 入力（適用済みかどうか問わず）が残っているか */
+    public hasAnyInput(): boolean {
+        return this.conditions.some(c => c.value.trim() !== "");
     }
 
     setColumns(cols: powerbi.DataViewMetadataColumn[], uniquesPerCol: string[][] = []): void {
@@ -138,10 +117,9 @@ export class ConditionForm {
         this.render();
     }
 
-    setState(conditions: FilterCondition[], logic: GlobalLogic): void {
+    setState(conditions: FilterCondition[], columnLogic: ColumnLogic): void {
         this.conditions = conditions.map(c => ({ ...c }));
-        this.logic = logic;
-        this.logicSelect.value = logic;
+        this.columnLogic = { ...columnLogic };
         this.initialized = true;
         this.render();
     }
@@ -150,8 +128,8 @@ export class ConditionForm {
         return this.conditions.map(c => ({ ...c }));
     }
 
-    getLogic(): GlobalLogic {
-        return this.logic;
+    getColumnLogic(): ColumnLogic {
+        return { ...this.columnLogic };
     }
 
     // ==========================================================
@@ -181,17 +159,10 @@ export class ConditionForm {
             empty.textContent = "列を「列」フィールドにバインドしてください";
             this.rowsHost.appendChild(empty);
             this.addBtn.disabled = true;
-            this.logicWrap.style.visibility = "hidden";
             return;
         }
 
         this.addBtn.disabled = this.findFreeColumn() < 0;
-
-        // 複数列に条件があれば logic セレクタ表示
-        const colSet = new Set(this.conditions.map(c => c.columnIndex));
-        const showLogic = this.anyColumnHasTwo();
-        this.logicWrap.style.visibility = showLogic ? "visible" : "hidden";
-        void colSet;
 
         if (this.conditions.length === 0) {
             const hint = document.createElement("div");
@@ -201,16 +172,40 @@ export class ConditionForm {
             return;
         }
 
+        // 同じ列の 2 行目には AND/OR バッジを前置
+        const seen = new Set<number>();
         this.conditions.forEach((c, idx) => {
+            if (seen.has(c.columnIndex)) {
+                this.rowsHost.appendChild(this.makeLogicBadge(c.columnIndex));
+            }
+            seen.add(c.columnIndex);
             this.rowsHost.appendChild(this.makeRow(c, idx));
         });
+
+        // 条件配列に残っていない列のロジックは破棄
+        const activeCols = new Set(this.conditions.map(c => c.columnIndex).map(String));
+        for (const k of Object.keys(this.columnLogic)) {
+            if (!activeCols.has(k)) delete this.columnLogic[k];
+        }
     }
 
-    private anyColumnHasTwo(): boolean {
-        const count = new Map<number, number>();
-        for (const c of this.conditions) count.set(c.columnIndex, (count.get(c.columnIndex) ?? 0) + 1);
-        for (const n of count.values()) if (n >= 2) return true;
-        return false;
+    private makeLogicBadge(colIdx: number): HTMLElement {
+        const wrap = document.createElement("div");
+        wrap.className = "fc-logic-badge";
+        const sel = document.createElement("select");
+        sel.className = "fc-logic-sel";
+        for (const v of ["AND", "OR"] as GlobalLogic[]) {
+            const opt = document.createElement("option");
+            opt.value = v;
+            opt.textContent = v;
+            sel.appendChild(opt);
+        }
+        sel.value = this.columnLogic[String(colIdx)] === "OR" ? "OR" : "AND";
+        sel.onchange = () => {
+            this.columnLogic[String(colIdx)] = sel.value === "OR" ? "OR" : "AND";
+        };
+        wrap.appendChild(sel);
+        return wrap;
     }
 
     private makeRow(cond: FilterCondition, idx: number): HTMLElement {

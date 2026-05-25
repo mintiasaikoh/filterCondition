@@ -173,16 +173,19 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    margin: 2px 0;
+    margin: 0;
 
     select {
-        font-size: 11px;
-        font-weight: 600;
-        padding: 1px 6px;
-        border: 1px solid var(--fc-accent, #0078d4);
-        border-radius: 10px;
-        background: var(--fc-bg, #fff);
-        color: var(--fc-accent, #0078d4);
+        font-size: 10px;
+        padding: 0 4px;
+        border: none;
+        background: transparent;
+        color: var(--fc-fg, #605e5c);
+        opacity: 0.7;
         cursor: pointer;
+        appearance: none;
+        -webkit-appearance: none;
+
+        &:hover { opacity: 1; }
     }
 }

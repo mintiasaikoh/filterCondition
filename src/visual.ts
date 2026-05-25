@@ -32,6 +32,9 @@ export class Visual implements IVisual {
     private lastFilterSig = "";
     private persistedSeen = false;
     private lastStateSig = "";
+    private uniquesCache: { rowsRef: unknown; target: string; result: string[][] } | null = null;
+    private lastColsRef: unknown = null;
+    private lastUniquesRef: unknown = null;
 
     constructor(options: VisualConstructorOptions) {
         this.host = options.host;
@@ -57,7 +60,12 @@ export class Visual implements IVisual {
         const cols = dv?.table?.columns ?? [];
         const targetName = String(this.formattingSettings?.suggestionsCard?.targetColumnName?.value ?? "").trim();
         const uniques = this.extractUniques(dv, targetName);
-        this.form.setColumns(cols, uniques);
+        // cols / uniques の参照が変わっていなければ DOM 再構築をスキップ
+        if (cols !== this.lastColsRef || uniques !== this.lastUniquesRef) {
+            this.lastColsRef = cols;
+            this.lastUniquesRef = uniques;
+            this.form.setColumns(cols, uniques);
+        }
 
         // 永続化された条件を初回復元
         if (!this.persistedSeen) {
@@ -218,12 +226,24 @@ export class Visual implements IVisual {
     private extractUniques(dv: DataView | null, targetName: string): string[][] {
         const cols = dv?.table?.columns ?? [];
         const rows = dv?.table?.rows ?? [];
+
+        // 同じ rows 参照 & 同じ targetName ならキャッシュ流用（update は resize/format でも走る）
+        if (this.uniquesCache
+            && this.uniquesCache.rowsRef === rows
+            && this.uniquesCache.target === targetName) {
+            return this.uniquesCache.result;
+        }
+
         const LIMIT = 15;
         const targets = new Set(
             targetName.split(",").map(s => s.trim()).filter(s => s.length > 0)
         );
-        if (targets.size === 0) return cols.map(() => []);
-        return cols.map((c, ci) => {
+        if (targets.size === 0) {
+            const empty = cols.map(() => [] as string[]);
+            this.uniquesCache = { rowsRef: rows, target: targetName, result: empty };
+            return empty;
+        }
+        const result = cols.map((c, ci) => {
             if (!targets.has(c?.displayName ?? "")) return [];
             // 全行で出現回数を数え、頻度の少ない順に LIMIT 件
             const counts = new Map<string, number>();
@@ -241,6 +261,8 @@ export class Visual implements IVisual {
                 .slice(0, LIMIT)
                 .map(e => e[0]);
         });
+        this.uniquesCache = { rowsRef: rows, target: targetName, result };
+        return result;
     }
 
     private applyAppearance(): void {

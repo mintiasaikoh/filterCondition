@@ -14,13 +14,9 @@
         },
         "state": {
             "properties": {
-                "conditionsJson": { "type": { "text": true } },
-                "logic":          { "type": { "text": true } }
-            }
-        },
-        "suggestions": {
-            "properties": {
-                "targetColumnName": { "type": { "text": true } }
+                "conditionsJson":   { "type": { "text": true } },
+                "columnLogicJson":  { "type": { "text": true } },
+                "logic":            { "type": { "text": true } }
             }
         },
         "appearance": {
@@ -37,6 +33,14 @@
         {
             "table": {
                 "rows": {
+                    "for": { "in": "values" },
+                    "dataReductionAlgorithm": { "top": { "count": 1 } }
+                }
+            }
+        },
+        {
+            "categorical": {
+                "categories": {
                     "for": { "in": "values" },
                     "dataReductionAlgorithm": { "top": { "count": 30000 } }
                 }

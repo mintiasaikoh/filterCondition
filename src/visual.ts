@@ -32,7 +32,7 @@ export class Visual implements IVisual {
     private lastFilterSig = "";
     private persistedSeen = false;
     private lastStateSig = "";
-    private uniquesCache: { catRef: unknown; result: string[][] } | null = null;
+    private uniquesCache: { catRef: unknown; target: string; result: string[][] } | null = null;
     private lastColsRef: unknown = null;
     private lastUniquesRef: unknown = null;
 
@@ -64,7 +64,10 @@ export class Visual implements IVisual {
         this.applyAppearance();
 
         const cols = this.resolveColumns(tableDV, catDV);
-        const uniques = this.extractUniques(catDV, cols);
+        const targetName = String(
+            this.formattingSettings?.suggestionsCard?.targetColumnName?.value ?? ""
+        ).trim();
+        const uniques = this.extractUniques(catDV, cols, targetName);
         // cols / uniques の参照が変わっていなければ DOM 再構築をスキップ
         if (cols !== this.lastColsRef || uniques !== this.lastUniquesRef) {
             this.lastColsRef = cols;
@@ -243,24 +246,40 @@ export class Visual implements IVisual {
      * Power BI engine 側で distinct 化済みなので O(distinct 値数) で完了。
      * cols は table DV ベース、各 col に対応する categorical を queryName で突き合わせる。
      */
+    /**
+     * categorical DV から distinct 値を抽出。
+     * Format Pane の targetColumnName で指定された列だけ datalist を返す。
+     * 空指定なら全 col [] を返す（候補機能 OFF）。
+     */
     private extractUniques(
         catDV: DataView | null,
         cols: powerbi.DataViewMetadataColumn[],
+        targetName: string,
     ): string[][] {
         const categories = catDV?.categorical?.categories ?? [];
 
-        // 同じ categories 参照ならキャッシュ流用
-        if (this.uniquesCache && this.uniquesCache.catRef === categories) {
+        if (this.uniquesCache
+            && this.uniquesCache.catRef === categories
+            && this.uniquesCache.target === targetName) {
             return this.uniquesCache.result;
         }
 
-        const LIMIT = 15;
+        const targets = new Set(
+            targetName.split(",").map(s => s.trim()).filter(s => s.length > 0)
+        );
+        if (targets.size === 0) {
+            const empty = cols.map(() => [] as string[]);
+            this.uniquesCache = { catRef: categories, target: targetName, result: empty };
+            return empty;
+        }
 
-        // queryName → distinct values のマップ
+        const LIMIT = 15;
+        // queryName → distinct values（指定列のみ）
         const byQueryName = new Map<string, string[]>();
         for (const cat of categories) {
-            const qn = cat?.source?.queryName;
-            if (!qn) continue;
+            const src = cat?.source;
+            if (!src) continue;
+            if (!targets.has(src.displayName ?? "")) continue;
             const seen = new Set<string>();
             const out: string[] = [];
             for (const v of cat.values ?? []) {
@@ -275,11 +294,11 @@ export class Visual implements IVisual {
                 if (out.length >= LIMIT) break;
             }
             out.sort((a, b) => a.localeCompare(b));
-            byQueryName.set(qn, out);
+            byQueryName.set(src.queryName ?? "", out);
         }
 
         const result = cols.map(c => byQueryName.get(c?.queryName ?? "") ?? []);
-        this.uniquesCache = { catRef: categories, result };
+        this.uniquesCache = { catRef: categories, target: targetName, result };
         return result;
     }
 

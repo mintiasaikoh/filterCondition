@@ -50,24 +50,21 @@ export class Visual implements IVisual {
     }
 
     public update(options: VisualUpdateOptions): void {
-        // capabilities.json に table / categorical の 2 mapping を定義しているため
-        // Power BI は options.dataViews に両方の DataView を返す（前提）。
-        // フォールバック: 片方しか来ない場合は手元のものから cols を組み立てる。
+        // capabilities.json で 1 つのエントリに table と categorical を両方定義しているため、
+        // dataViews[0] に .table と .categorical の両方が populated されている前提。
         const dvs = options.dataViews ?? [];
-        const tableDV = dvs.find(d => d?.table) ?? null;
-        const catDV   = dvs.find(d => d?.categorical) ?? null;
-        const dv = tableDV ?? catDV ?? dvs[0] ?? null;
+        const dv = dvs[0] ?? null;
         this.lastDataView = dv;
 
         this.formattingSettings = this.formattingSettingsService
             .populateFormattingSettingsModel(VisualFormattingSettingsModel, dv);
         this.applyAppearance();
 
-        const cols = this.resolveColumns(tableDV, catDV);
+        const cols = this.resolveColumns(dv);
         const targetName = String(
             this.formattingSettings?.suggestionsCard?.targetColumnName?.value ?? ""
         ).trim();
-        const uniques = this.extractUniques(catDV, cols, targetName);
+        const uniques = this.extractUniques(dv, cols, targetName);
         // cols / uniques の参照が変わっていなければ DOM 再構築をスキップ
         if (cols !== this.lastColsRef || uniques !== this.lastUniquesRef) {
             this.lastColsRef = cols;
@@ -93,14 +90,11 @@ export class Visual implements IVisual {
         this.restoreFromJsonFilters(options.jsonFilters, cols);
     }
 
-    /** table DV があれば columns を、無ければ categorical の sources から組み立てる */
-    private resolveColumns(
-        tableDV: DataView | null,
-        catDV: DataView | null,
-    ): powerbi.DataViewMetadataColumn[] {
-        const fromTable = tableDV?.table?.columns ?? [];
+    /** dv.table.columns があればそれを、無ければ categorical の sources から組み立てる */
+    private resolveColumns(dv: DataView | null): powerbi.DataViewMetadataColumn[] {
+        const fromTable = dv?.table?.columns ?? [];
         if (fromTable.length > 0) return fromTable;
-        const cats = catDV?.categorical?.categories ?? [];
+        const cats = dv?.categorical?.categories ?? [];
         return cats.map(c => c.source);
     }
 
@@ -252,11 +246,11 @@ export class Visual implements IVisual {
      * 空指定なら全 col [] を返す（候補機能 OFF）。
      */
     private extractUniques(
-        catDV: DataView | null,
+        dv: DataView | null,
         cols: powerbi.DataViewMetadataColumn[],
         targetName: string,
     ): string[][] {
-        const categories = catDV?.categorical?.categories ?? [];
+        const categories = dv?.categorical?.categories ?? [];
 
         if (this.uniquesCache
             && this.uniquesCache.catRef === categories

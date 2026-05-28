@@ -41,9 +41,7 @@
                     "for": { "in": "values" },
                     "dataReductionAlgorithm": { "top": { "count": 1 } }
                 }
-            }
-        },
-        {
+            },
             "categorical": {
                 "categories": {
                     "for": { "in": "values" },

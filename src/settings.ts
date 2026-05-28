@@ -45,22 +45,7 @@ class AppearanceCard extends FormattingSettingsCard {
     ];
 }
 
-class SuggestionsCard extends FormattingSettingsCard {
-    name = "suggestions";
-    displayName = "候補表示";
-
-    targetColumnName = new formattingSettings.TextInput({
-        name: "targetColumnName",
-        displayName: "候補を表示する列名（カンマ区切りで複数可）",
-        value: "",
-        placeholder: "例: 組織名, 部署",
-    });
-
-    slices: FormattingSettingsSlice[] = [this.targetColumnName];
-}
-
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     appearanceCard = new AppearanceCard();
-    suggestionsCard = new SuggestionsCard();
-    cards = [this.appearanceCard, this.suggestionsCard];
+    cards = [this.appearanceCard];
 }

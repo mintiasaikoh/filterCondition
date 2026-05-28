@@ -45,7 +45,7 @@
             "categorical": {
                 "categories": {
                     "for": { "in": "values" },
-                    "dataReductionAlgorithm": { "top": { "count": 30000 } }
+                    "dataReductionAlgorithm": { "top": { "count": 200 } }
                 }
             }
         }

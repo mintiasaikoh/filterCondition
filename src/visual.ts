@@ -7,6 +7,7 @@ import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructor
 import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import DataView = powerbi.DataView;
+import VisualUpdateType = powerbi.VisualUpdateType;
 
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 
@@ -87,7 +88,9 @@ export class Visual implements IVisual {
         }
 
         // 外部 jsonFilters からの復元（スライサー同期）
-        this.restoreFromJsonFilters(options.jsonFilters, cols);
+        // Data 更新時のみ未適用入力もリセット対象に（resize/style では typing を壊さない）
+        const isDataUpdate = ((options.type ?? VisualUpdateType.All) & VisualUpdateType.Data) !== 0;
+        this.restoreFromJsonFilters(options.jsonFilters, cols, isDataUpdate);
     }
 
     /** dv.table.columns があればそれを、無ければ categorical の sources から組み立てる */
@@ -213,12 +216,16 @@ export class Visual implements IVisual {
     private restoreFromJsonFilters(
         jsonFilters: powerbi.IFilter[] | undefined,
         cols: powerbi.DataViewMetadataColumn[],
+        isDataUpdate: boolean,
     ): void {
         const restored = restoreFromAdvancedFilters(jsonFilters, cols);
 
-        // ブックマーク / 外部スライサーで自分の filter が解除された場合は UI をリセット
+        // ブックマーク / 外部スライサーで自分の filter が解除された場合は UI をリセット。
+        // 未適用の入力中テキストも Data 更新（ブックマーク含む）時のみ掃除する。
+        // resize / style の update では typing 中のテキストを壊さない。
         if (!restored) {
-            if (this.lastFilterSig !== "") {
+            const shouldResetDirty = isDataUpdate && this.form.hasAnyInput();
+            if (this.lastFilterSig !== "" || shouldResetDirty) {
                 this.lastFilterSig = "";
                 this.form.resetToDefault();
             }

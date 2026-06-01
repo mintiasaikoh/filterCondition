@@ -39,7 +39,7 @@
             "categorical": {
                 "categories": {
                     "for": { "in": "values" },
-                    "dataReductionAlgorithm": { "top": { "count": 50 } }
+                    "dataReductionAlgorithm": { "top": { "count": 1000 } }
                 }
             }
         }

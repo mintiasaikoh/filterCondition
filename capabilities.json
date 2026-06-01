@@ -4,11 +4,6 @@
             "displayName": "列",
             "name": "values",
             "kind": "GroupingOrMeasure"
-        },
-        {
-            "displayName": "候補列",
-            "name": "suggestionsSource",
-            "kind": "Grouping"
         }
     ],
     "objects": {
@@ -22,6 +17,11 @@
                 "conditionsJson":   { "type": { "text": true } },
                 "columnLogicJson":  { "type": { "text": true } },
                 "logic":            { "type": { "text": true } }
+            }
+        },
+        "suggestions": {
+            "properties": {
+                "targetColumnName": { "type": { "text": true } }
             }
         },
         "appearance": {
@@ -38,17 +38,14 @@
         {
             "table": {
                 "rows": {
-                    "select": [
-                        { "for": { "in": "values" } },
-                        { "for": { "in": "suggestionsSource" } }
-                    ],
+                    "for": { "in": "values" },
                     "dataReductionAlgorithm": { "top": { "count": 1 } }
                 }
             },
             "categorical": {
                 "categories": {
-                    "for": { "in": "suggestionsSource" },
-                    "dataReductionAlgorithm": { "top": { "count": 200 } }
+                    "for": { "in": "values" },
+                    "dataReductionAlgorithm": { "top": { "count": 50 } }
                 }
             }
         }

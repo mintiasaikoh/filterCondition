@@ -90,12 +90,28 @@ export class Visual implements IVisual {
         this.restoreFromJsonFilters(options.jsonFilters, cols, isDataUpdate);
     }
 
-    /** dv.table.columns があればそれを、無ければ categorical の sources から組み立てる */
+    /**
+     * 条件フォームに出す列リストを構築。
+     * table.columns ∪ categorical sources を queryName で dedupe してマージする。
+     * - 候補列だけにバインドした列が table.columns に出なくても categorical source 経由で必ず出る
+     * - 同一列を「列」「候補列」両方に入れても重複しない
+     * - table が空でも取りこぼさない
+     */
     private resolveColumns(dv: DataView | null): powerbi.DataViewMetadataColumn[] {
-        const fromTable = dv?.table?.columns ?? [];
-        if (fromTable.length > 0) return fromTable;
-        const cats = dv?.categorical?.categories ?? [];
-        return cats.map(c => c.source);
+        const out: powerbi.DataViewMetadataColumn[] = [];
+        const seen = new Set<string>();
+        const add = (c?: powerbi.DataViewMetadataColumn): void => {
+            if (!c) return;
+            const key = c.queryName ?? c.displayName ?? "";
+            if (key) {
+                if (seen.has(key)) return;
+                seen.add(key);
+            }
+            out.push(c);
+        };
+        for (const c of dv?.table?.columns ?? []) add(c);
+        for (const cat of dv?.categorical?.categories ?? []) add(cat?.source);
+        return out;
     }
 
     public getFormattingModel(): powerbi.visuals.FormattingModel {

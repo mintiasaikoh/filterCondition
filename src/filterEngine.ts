@@ -20,7 +20,13 @@ export interface FilterCondition {
 // ==========================================================
 
 export function isConditionActive(c: FilterCondition): boolean {
-    return c.value.trim() !== "";
+    const v = c.value.trim();
+    if (v === "") return false;
+    // gte/lte は数値のみ有効（非数値は黙ってマッチ無しになるので発火させない）
+    if (c.operator === "gte" || c.operator === "lte") {
+        return Number.isFinite(Number(v));
+    }
+    return true;
 }
 
 /** target + 条件アイテム配列の比較キー */

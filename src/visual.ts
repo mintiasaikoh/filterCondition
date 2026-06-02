@@ -17,7 +17,6 @@ import {
     emitAdvancedFilter,
     restoreFromAdvancedFilters,
     ColumnLogic,
-    GlobalLogic,
 } from "./advancedFilterEmitter";
 import { VisualFormattingSettingsModel } from "./settings";
 
@@ -31,8 +30,6 @@ export class Visual implements IVisual {
 
     private lastDataView: DataView | null = null;
     private lastFilterSig = "";
-    private persistedSeen = false;
-    private lastStateSig = "";
     private uniquesCache: { catRef: unknown; result: string[][] } | null = null;
     private lastColsRef: unknown = null;
     private lastUniquesRef: unknown = null;
@@ -70,22 +67,11 @@ export class Visual implements IVisual {
             this.form.setColumns(cols, uniques);
         }
 
-        // 永続化された条件を初回復元
-        if (!this.persistedSeen) {
-            this.restoreFromPersisted(dv);
-            this.persistedSeen = true;
-            this.lastStateSig = this.computeStateSig(dv);
-        } else {
-            // 2 回目以降: metadata.objects.state が外部（ブックマーク等）で書き換えられたら同期
-            const curSig = this.computeStateSig(dv);
-            if (curSig !== this.lastStateSig) {
-                this.lastStateSig = curSig;
-                this.restoreFromPersisted(dv);
-            }
-        }
-
-        // 外部 jsonFilters からの復元（スライサー同期）
-        // Data 更新時のみ未適用入力もリセット対象に（resize/style では typing を壊さない）
+        // UI 状態は jsonFilters を唯一の真実源とする（dateCalendar と同方針）。
+        // metadata.objects.state は書くが読まない: 「全フィルターリセット」ブックマークは
+        // filter 層のみクリアして metadata を残すため、metadata 読み込みは stale state の
+        // 温床になる。cross-session 復元もブックマークも jsonFilters が担う。
+        // Data 更新時のみ未適用入力もリセット対象に（resize/style では typing を壊さない）。
         const isDataUpdate = ((options.type ?? VisualUpdateType.All) & VisualUpdateType.Data) !== 0;
         this.restoreFromJsonFilters(options.jsonFilters, cols, isDataUpdate);
     }
@@ -132,7 +118,6 @@ export class Visual implements IVisual {
             this.lastFilterSig = result.sig;
         }
         this.persist(conds, columnLogic);
-        this.lastStateSig = this.makeStateSig(conds, columnLogic);
     }
 
     // ==========================================================
@@ -150,76 +135,6 @@ export class Visual implements IVisual {
                 },
             }],
         });
-    }
-
-    private restoreFromPersisted(dv: DataView | null): void {
-        const s = dv?.metadata?.objects?.["state"];
-        if (!s) {
-            // 状態が完全に空（ブックマーク等で消えた）→ UI もリセット
-            this.form.resetToDefault();
-            return;
-        }
-        const json = String(s["conditionsJson"] ?? "");
-        const colLogicJson = String(s["columnLogicJson"] ?? "");
-        // 旧版（単一 logic）からの後方互換
-        const legacyLogic: GlobalLogic = (s["logic"] === "OR" ? "OR" : "AND");
-
-        const conds: FilterCondition[] = [];
-        if (json) {
-            try {
-                const parsed = JSON.parse(json) as unknown;
-                if (Array.isArray(parsed)) {
-                    for (const raw of parsed) {
-                        if (!raw || typeof raw !== "object") continue;
-                        const r = raw as Record<string, unknown>;
-                        const ci = Number(r.columnIndex);
-                        const op = r.operator;
-                        const val = String(r.value ?? "");
-                        if (!Number.isFinite(ci)) continue;
-                        if (op !== "contains" && op !== "notContains" && op !== "gte" && op !== "lte") continue;
-                        conds.push({ columnIndex: ci, operator: op, value: val });
-                    }
-                }
-            } catch { /* ignore */ }
-        }
-
-        let columnLogic: ColumnLogic = {};
-        if (colLogicJson) {
-            try {
-                const parsed = JSON.parse(colLogicJson) as unknown;
-                if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-                    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-                        if (v === "OR" || v === "AND") columnLogic[k] = v;
-                    }
-                }
-            } catch { /* ignore */ }
-        } else if (s["logic"] !== undefined) {
-            // 旧スキーマ: 全列に同じ logic を適用
-            const colCount = new Map<number, number>();
-            for (const c of conds) colCount.set(c.columnIndex, (colCount.get(c.columnIndex) ?? 0) + 1);
-            for (const [ci, n] of colCount) if (n >= 2) columnLogic[String(ci)] = legacyLogic;
-        }
-
-        // 状態が空相当なら UI を初期化
-        if (conds.length === 0) {
-            this.form.resetToDefault();
-            return;
-        }
-        this.form.setState(conds, columnLogic);
-    }
-
-    /** metadata.objects.state の状態シグネチャ（外部書き換え検知用） */
-    private computeStateSig(dv: DataView | null): string {
-        const s = dv?.metadata?.objects?.["state"];
-        if (!s) return "";
-        const c = String(s["conditionsJson"] ?? "");
-        const l = String(s["columnLogicJson"] ?? s["logic"] ?? "");
-        return `${c}\0${l}`;
-    }
-
-    /** 自分が書き込もうとしている state のシグネチャ */
-    private makeStateSig(conds: FilterCondition[], columnLogic: ColumnLogic): string {
-        return `${JSON.stringify(conds)}\0${JSON.stringify(columnLogic)}`;
     }
 
     // ==========================================================

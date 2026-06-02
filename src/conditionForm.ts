@@ -172,18 +172,28 @@ export class ConditionForm {
             return;
         }
 
-        // 同じ列の 2 行目には AND/OR バッジを前置
-        const seen = new Set<number>();
+        // 列ごとにグループ化して描画。同一列の 2 条件を必ず隣接させ、間に AND/OR バッジを置く。
+        // 配列上で非隣接でもバッジが正しい位置に出る。元の配列 index は makeRow に渡す
+        // （削除 splice・上限判定が元 index 依存のため）。
+        const orderCols: number[] = [];
+        const idxByCol = new Map<number, number[]>();
         this.conditions.forEach((c, idx) => {
-            if (seen.has(c.columnIndex)) {
-                this.rowsHost.appendChild(this.makeLogicBadge(c.columnIndex));
+            if (!idxByCol.has(c.columnIndex)) {
+                idxByCol.set(c.columnIndex, []);
+                orderCols.push(c.columnIndex);
             }
-            seen.add(c.columnIndex);
-            this.rowsHost.appendChild(this.makeRow(c, idx));
+            idxByCol.get(c.columnIndex)!.push(idx);
         });
+        for (const colIdx of orderCols) {
+            const idxs = idxByCol.get(colIdx)!;
+            idxs.forEach((idx, k) => {
+                if (k === 1) this.rowsHost.appendChild(this.makeLogicBadge(colIdx));
+                this.rowsHost.appendChild(this.makeRow(this.conditions[idx], idx));
+            });
+        }
 
         // 条件配列に残っていない列のロジックは破棄
-        const activeCols = new Set(this.conditions.map(c => c.columnIndex).map(String));
+        const activeCols = new Set(orderCols.map(String));
         for (const k of Object.keys(this.columnLogic)) {
             if (!activeCols.has(k)) delete this.columnLogic[k];
         }

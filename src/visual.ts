@@ -48,8 +48,8 @@ export class Visual implements IVisual {
     }
 
     public update(options: VisualUpdateOptions): void {
-        // capabilities.json で 1 つのエントリに table と categorical を両方定義しているため、
-        // dataViews[0] に .table と .categorical の両方が populated されている前提。
+        // Power BI は 1 ビジュアル 1 クエリ。mapping は categorical 一本
+        // （categories=候補列, values=列メジャー）。dataViews[0].categorical を使う。
         const dvs = options.dataViews ?? [];
         const dv = dvs[0] ?? null;
         this.lastDataView = dv;
@@ -78,10 +78,11 @@ export class Visual implements IVisual {
 
     /**
      * 条件フォームに出す列リストを構築。
-     * table.columns ∪ categorical sources を queryName で dedupe してマージする。
-     * - 候補列だけにバインドした列が table.columns に出なくても categorical source 経由で必ず出る
-     * - 同一列を「列」「候補列」両方に入れても重複しない
-     * - table が空でも取りこぼさない
+     * categorical の categories（候補列）∪ values（列=メジャー）の source を
+     * queryName で dedupe マージ。Power BI は 1 ビジュアル 1 クエリ＝categorical 一本。
+     * - categories: 候補列（distinct あり）
+     * - values: フィルタ列（メジャー集計、値は無視し metadata のみ使用）
+     * buildFilterTarget が集計ラッパー（Count/Sum）を剥がすので values 由来でもフィルタ可。
      */
     private resolveColumns(dv: DataView | null): powerbi.DataViewMetadataColumn[] {
         const out: powerbi.DataViewMetadataColumn[] = [];
@@ -95,8 +96,8 @@ export class Visual implements IVisual {
             }
             out.push(c);
         };
-        for (const c of dv?.table?.columns ?? []) add(c);
         for (const cat of dv?.categorical?.categories ?? []) add(cat?.source);
+        for (const val of dv?.categorical?.values ?? []) add(val?.source);
         return out;
     }
 
@@ -171,10 +172,10 @@ export class Visual implements IVisual {
     // ==========================================================
 
     /**
-     * categorical DV から distinct 値を抽出。
-     * categorical には「候補列」role にバインドされた列だけが入るので、
-     * 来た列すべてが候補対象。queryName で table 側 cols と突き合わせる。
-     * 候補列が空なら categorical も空 → 全 col [] を返す（datalist なし）。
+     * categorical.categories（候補列）から各列独立に distinct 値を抽出。
+     * 候補列は複数可。categories[] を列ごとに走査し queryName で cols に割当。
+     * 候補列が空なら categories も空 → 全 col [] を返す（datalist なし）。
+     * 値はタプル展開で重複しうるが Set + LIMIT 15 で先頭 15 distinct を採用。
      */
     private extractUniques(
         dv: DataView | null,

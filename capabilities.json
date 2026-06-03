@@ -42,9 +42,7 @@
                     "dataReductionAlgorithm": { "top": { "count": 30000 } }
                 },
                 "values": {
-                    "select": [
-                        { "for": { "in": "values" } }
-                    ]
+                    "for": { "in": "values" }
                 }
             }
         }

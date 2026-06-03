@@ -96,7 +96,7 @@ export class ConditionForm {
     setColumns(cols: powerbi.DataViewMetadataColumn[], uniquesPerCol: string[][] = []): void {
         this.columns = cols.map((c, i) => ({
             index: i,
-            label: c?.displayName ?? `列 ${i + 1}`,
+            label: this.cleanLabel(c, i),
         }));
         this.uniquesPerCol = uniquesPerCol;
         this.rebuildDatalists();
@@ -115,6 +115,24 @@ export class ConditionForm {
         if (this.columns.length > 0) this.initialized = true;
 
         this.render();
+    }
+
+    /**
+     * 表示ラベルを queryName から綺麗な列名に導出。
+     * 「列」role はメジャーウェルなので displayName が「最初の 部署」等の集計名になる。
+     * queryName の集計ラッパー（First/Count/Sum...）を剥がし、Table.Col の Col 部分を使う。
+     * （CLAUDE.md 方針: column 名は queryName 後半を採用、displayName はリネームでズレる）
+     */
+    private cleanLabel(c: powerbi.DataViewMetadataColumn, i: number): string {
+        const qn = c?.queryName;
+        if (qn) {
+            const m = qn.match(/^\w+\((.+)\)$/);
+            const inner = m ? m[1] : qn;
+            const dot = inner.lastIndexOf(".");
+            if (dot >= 0 && dot < inner.length - 1) return inner.substring(dot + 1);
+            if (inner) return inner;
+        }
+        return c?.displayName ?? `列 ${i + 1}`;
     }
 
     setState(conditions: FilterCondition[], columnLogic: ColumnLogic): void {

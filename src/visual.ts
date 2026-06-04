@@ -78,10 +78,11 @@ export class Visual implements IVisual {
 
     /**
      * 条件フォームに出す列リストを構築。
-     * `keepAllMetadataColumns: true` により dv.metadata.columns に全ロール
-     * （列・候補列）の列が metadata として届く（データ fetch なし＝軽い・集約なし）。
-     * 候補列は categorical.categories に distinct も来る。queryName で dedupe マージ。
-     * フィルタは metadata の queryName だけで成立（buildFilterTarget）。
+     * categorical の categories（候補列）∪ values（列=メジャー）の source を
+     * queryName で dedupe マージ。両方 categorical で確実に届く。
+     * 「列」はメジャー集計されるが値は無視し metadata（queryName）のみ使用。
+     * buildFilterTarget が集計ラッパー（Count/First/Sum）を剥がすのでフィルタ可。
+     * 表示名は conditionForm.cleanLabel が「最初の 〜」を剥がして素の列名にする。
      */
     private resolveColumns(dv: DataView | null): powerbi.DataViewMetadataColumn[] {
         const out: powerbi.DataViewMetadataColumn[] = [];
@@ -95,8 +96,8 @@ export class Visual implements IVisual {
             }
             out.push(c);
         };
-        for (const c of dv?.metadata?.columns ?? []) add(c);
         for (const cat of dv?.categorical?.categories ?? []) add(cat?.source);
+        for (const val of dv?.categorical?.values ?? []) add(val?.source);
         return out;
     }
 

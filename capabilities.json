@@ -3,7 +3,7 @@
         {
             "displayName": "列",
             "name": "values",
-            "kind": "Grouping"
+            "kind": "Measure"
         },
         {
             "displayName": "候補列",
@@ -40,11 +40,13 @@
                 "categories": {
                     "for": { "in": "suggestionsSource" },
                     "dataReductionAlgorithm": { "top": { "count": 30000 } }
+                },
+                "values": {
+                    "for": { "in": "values" }
                 }
             }
         }
     ],
-    "keepAllMetadataColumns": true,
     "supportsHighlight": false,
     "supportsSynchronizingFilterState": true,
     "privileges": []

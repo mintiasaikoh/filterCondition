@@ -172,10 +172,10 @@ export class Visual implements IVisual {
     // ==========================================================
 
     /**
-     * categorical.categories（候補列）から各列独立に distinct 値を抽出。
-     * 候補列は複数可。categories[] を列ごとに走査し queryName で cols に割当。
-     * 候補列が空なら categories も空 → 全 col [] を返す（datalist なし）。
-     * 値はタプル展開で重複しうるが Set + LIMIT 15 で先頭 15 distinct を採用。
+     * categorical.categories（全列）から各列独立に distinct を抽出。
+     * cardinality 自動判定: distinct が SHOW_MAX 以下の列だけ候補（datalist）を出す。
+     * → 低 card 列（組織名・部署等）は自動で候補表示、高 card 列は出さない。設定不要。
+     * TEST/ダミーを含む値は除外。queryName で cols に割当。
      */
     private extractUniques(
         dv: DataView | null,
@@ -193,25 +193,23 @@ export class Visual implements IVisual {
             return empty;
         }
 
-        const LIMIT = 15;
+        const SHOW_MAX = 100; // distinct がこれ以下なら候補表示（低 card 自動判定）
         const byQueryName = new Map<string, string[]>();
         for (const cat of categories) {
             const src = cat?.source;
             if (!src) continue;
-            const seen = new Set<string>();
-            const out: string[] = [];
+            const set = new Set<string>();
+            let tooMany = false;
             for (const v of cat.values ?? []) {
                 if (v == null) continue;
                 const s = String(v);
                 if (s === "") continue;
                 if (s.toUpperCase().includes("TEST")) continue;
                 if (s.includes("ダミー")) continue;
-                if (seen.has(s)) continue;
-                seen.add(s);
-                out.push(s);
-                if (out.length >= LIMIT) break;
+                set.add(s);
+                if (set.size > SHOW_MAX) { tooMany = true; break; }
             }
-            out.sort((a, b) => a.localeCompare(b));
+            const out = tooMany ? [] : Array.from(set).sort((a, b) => a.localeCompare(b));
             byQueryName.set(src.queryName ?? "", out);
         }
 

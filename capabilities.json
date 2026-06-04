@@ -3,11 +3,6 @@
         {
             "displayName": "列",
             "name": "values",
-            "kind": "Measure"
-        },
-        {
-            "displayName": "候補列",
-            "name": "suggestionsSource",
             "kind": "Grouping"
         }
     ],
@@ -38,11 +33,8 @@
         {
             "categorical": {
                 "categories": {
-                    "for": { "in": "suggestionsSource" },
+                    "for": { "in": "values" },
                     "dataReductionAlgorithm": { "top": { "count": 30000 } }
-                },
-                "values": {
-                    "for": { "in": "values" }
                 }
             }
         }

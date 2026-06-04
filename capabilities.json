@@ -4,6 +4,11 @@
             "displayName": "列",
             "name": "values",
             "kind": "Grouping"
+        },
+        {
+            "displayName": "候補列",
+            "name": "suggestionsSource",
+            "kind": "Grouping"
         }
     ],
     "objects": {
@@ -33,12 +38,13 @@
         {
             "categorical": {
                 "categories": {
-                    "for": { "in": "values" },
+                    "for": { "in": "suggestionsSource" },
                     "dataReductionAlgorithm": { "top": { "count": 30000 } }
                 }
             }
         }
     ],
+    "keepAllMetadataColumns": true,
     "supportsHighlight": false,
     "supportsSynchronizingFilterState": true,
     "privileges": []

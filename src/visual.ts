@@ -78,11 +78,10 @@ export class Visual implements IVisual {
 
     /**
      * 条件フォームに出す列リストを構築。
-     * categorical の categories（候補列）∪ values（列=メジャー）の source を
-     * queryName で dedupe マージ。Power BI は 1 ビジュアル 1 クエリ＝categorical 一本。
-     * - categories: 候補列（distinct あり）
-     * - values: フィルタ列（メジャー集計、値は無視し metadata のみ使用）
-     * buildFilterTarget が集計ラッパー（Count/Sum）を剥がすので values 由来でもフィルタ可。
+     * `keepAllMetadataColumns: true` により dv.metadata.columns に全ロール
+     * （列・候補列）の列が metadata として届く（データ fetch なし＝軽い・集約なし）。
+     * 候補列は categorical.categories に distinct も来る。queryName で dedupe マージ。
+     * フィルタは metadata の queryName だけで成立（buildFilterTarget）。
      */
     private resolveColumns(dv: DataView | null): powerbi.DataViewMetadataColumn[] {
         const out: powerbi.DataViewMetadataColumn[] = [];
@@ -96,8 +95,8 @@ export class Visual implements IVisual {
             }
             out.push(c);
         };
+        for (const c of dv?.metadata?.columns ?? []) add(c);
         for (const cat of dv?.categorical?.categories ?? []) add(cat?.source);
-        for (const val of dv?.categorical?.values ?? []) add(val?.source);
         return out;
     }
 
@@ -172,10 +171,9 @@ export class Visual implements IVisual {
     // ==========================================================
 
     /**
-     * categorical.categories（全列）から各列独立に distinct を抽出。
-     * cardinality 自動判定: distinct が SHOW_MAX 以下の列だけ候補（datalist）を出す。
-     * → 低 card 列（組織名・部署等）は自動で候補表示、高 card 列は出さない。設定不要。
-     * TEST/ダミーを含む値は除外。queryName で cols に割当。
+     * categorical.categories（=候補列にバインドされた列のみ）から distinct を抽出。
+     * 候補列はユーザーが明示指定する低 card 列なので全 distinct を表示（DISPLAY_CAP まで）。
+     * TEST/ダミーを含む値は除外。queryName で cols に割当。列(metadata のみ)は候補なし。
      */
     private extractUniques(
         dv: DataView | null,
@@ -193,13 +191,12 @@ export class Visual implements IVisual {
             return empty;
         }
 
-        const SHOW_MAX = 100; // distinct がこれ以下なら候補表示（低 card 自動判定）
+        const DISPLAY_CAP = 200; // datalist が肥大しないための上限
         const byQueryName = new Map<string, string[]>();
         for (const cat of categories) {
             const src = cat?.source;
             if (!src) continue;
             const set = new Set<string>();
-            let tooMany = false;
             for (const v of cat.values ?? []) {
                 if (v == null) continue;
                 const s = String(v);
@@ -207,10 +204,9 @@ export class Visual implements IVisual {
                 if (s.toUpperCase().includes("TEST")) continue;
                 if (s.includes("ダミー")) continue;
                 set.add(s);
-                if (set.size > SHOW_MAX) { tooMany = true; break; }
+                if (set.size >= DISPLAY_CAP) break;
             }
-            const out = tooMany ? [] : Array.from(set).sort((a, b) => a.localeCompare(b));
-            byQueryName.set(src.queryName ?? "", out);
+            byQueryName.set(src.queryName ?? "", Array.from(set).sort((a, b) => a.localeCompare(b)));
         }
 
         const result = cols.map(c => byQueryName.get(c?.queryName ?? "") ?? []);

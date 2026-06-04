@@ -126,13 +126,23 @@ export class ConditionForm {
     private cleanLabel(c: powerbi.DataViewMetadataColumn, i: number): string {
         const qn = c?.queryName;
         if (qn) {
+            // 集計ラッパー strip: Agg(inner) → inner
             const m = qn.match(/^\w+\((.+)\)$/);
             const inner = m ? m[1] : qn;
+            // Table[Col]（DAX 形式）→ Col
+            const br = inner.match(/\[([^\]]+)\]\s*$/);
+            if (br) return br[1];
+            // Table.Col 形式 → Col
             const dot = inner.lastIndexOf(".");
             if (dot >= 0 && dot < inner.length - 1) return inner.substring(dot + 1);
             if (inner) return inner;
         }
-        return c?.displayName ?? `列 ${i + 1}`;
+        // displayName フォールバック（集計接辞「最初の 〜」「〜 の合計」等を除去）
+        const dn = c?.displayName ?? `列 ${i + 1}`;
+        return dn
+            .replace(/^(最初の|最後の|合計|平均|最小|最大|個別カウント|カウント|分散|標準偏差|中央値)\s*/, "")
+            .replace(/\s*の(最初|最後|合計|平均|最小|最大|カウント|個数|個別カウント)$/, "")
+            .trim() || dn;
     }
 
     setState(conditions: FilterCondition[], columnLogic: ColumnLogic): void {

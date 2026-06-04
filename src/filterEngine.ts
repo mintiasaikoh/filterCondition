@@ -50,6 +50,12 @@ export function buildFilterTarget(col: powerbi.DataViewMetadataColumn): IFilterC
     const hasAgg = !!aggMatch;
     if (hasAgg) qn = aggMatch[1];
     if (!hasAgg && col.isMeasure) return null;
+    // Table[Column] / 'Table'[Column] 形式（DAX 角括弧。* 始まり等の特殊列名で出る）
+    const brMatch = qn.match(/^'?(.+?)'?\[(.+)\]$/);
+    if (brMatch) {
+        return { table: brMatch[1], column: brMatch[2] };
+    }
+    // Table.Column 形式
     const dotIdx = qn.indexOf(".");
     if (dotIdx < 1) return null;
     return { table: qn.substring(0, dotIdx), column: qn.substring(dotIdx + 1) };

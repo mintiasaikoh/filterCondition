@@ -30,6 +30,8 @@ export class Visual implements IVisual {
 
     private lastDataView: DataView | null = null;
     private lastFilterSig = "";
+    private pendingApply = false;
+    private applyFallbackTimer: number | null = null;
     private uniquesCache: { catRef: unknown; result: string[][] } | null = null;
     private lastColsRef: unknown = null;
     private lastUniquesRef: unknown = null;
@@ -119,6 +121,26 @@ export class Visual implements IVisual {
             this.lastFilterSig = result.sig;
         }
         this.persist(conds, columnLogic);
+
+        // 発火したら jsonFilters エコー受信までスピナー継続。発火しなければ即解除。
+        if (result.emitted) {
+            this.pendingApply = true;
+            if (this.applyFallbackTimer !== null) clearTimeout(this.applyFallbackTimer);
+            // 念のためのフォールバック（エコーが来ないケースで固まらないよう）
+            this.applyFallbackTimer = window.setTimeout(() => this.clearPending(), 10000);
+        } else {
+            this.clearPending();
+        }
+    }
+
+    /** スピナー解除＋フォールバックタイマー停止 */
+    private clearPending(): void {
+        this.pendingApply = false;
+        if (this.applyFallbackTimer !== null) {
+            clearTimeout(this.applyFallbackTimer);
+            this.applyFallbackTimer = null;
+        }
+        this.form.setApplying(false);
     }
 
     // ==========================================================
@@ -153,6 +175,8 @@ export class Visual implements IVisual {
         // 未適用の入力中テキストも Data 更新（ブックマーク含む）時のみ掃除する。
         // resize / style の update では typing 中のテキストを壊さない。
         if (!restored) {
+            // 自分の filter 解除が反映された（remove のエコー）→ スピナー解除
+            if (this.pendingApply && isDataUpdate) this.clearPending();
             const shouldResetDirty = isDataUpdate && this.form.hasAnyInput();
             if (this.lastFilterSig !== "" || shouldResetDirty) {
                 this.lastFilterSig = "";
@@ -161,8 +185,11 @@ export class Visual implements IVisual {
             return;
         }
 
-        // 自己発火エコーは skip
-        if (restored.sig === this.lastFilterSig) return;
+        // 自己発火エコー = 自分の filter がモデルに反映された確証 → スピナー解除
+        if (restored.sig === this.lastFilterSig) {
+            if (this.pendingApply) this.clearPending();
+            return;
+        }
 
         // 有効な active 条件が入ってきたら UI を上書き（ブックマーク含む）
         this.form.setState(restored.conditions, restored.columnLogic);

@@ -27,7 +27,6 @@ export class ConditionForm {
     private uniquesPerCol: string[][] = [];
     private datalistHost: HTMLElement;
     private initialized = false;
-    private applyTimer: number | null = null;
 
     constructor(container: HTMLElement, private cb: ConditionFormCallbacks) {
         this.root = document.createElement("div");
@@ -69,17 +68,21 @@ export class ConditionForm {
         footer.appendChild(this.applyBtn);
     }
 
-    /** 適用発火＋「適用中…」スピナーを一定時間表示（操作が通った即時フィードバック） */
+    /** 適用発火。スピナーは visual 側が jsonFilters エコー受信まで点灯させる */
     private triggerApply(): void {
-        this.applyBtn.classList.add("fc-applying");
-        this.applyBtn.textContent = "適用中…";
-        if (this.applyTimer !== null) clearTimeout(this.applyTimer);
-        this.applyTimer = window.setTimeout(() => {
+        this.setApplying(true);
+        this.cb.onChange();
+    }
+
+    /** 「適用中…」スピナーの ON/OFF（解除は visual がフィルタ反映を検知して呼ぶ） */
+    public setApplying(on: boolean): void {
+        if (on) {
+            this.applyBtn.classList.add("fc-applying");
+            this.applyBtn.textContent = "適用中…";
+        } else {
             this.applyBtn.classList.remove("fc-applying");
             this.applyBtn.textContent = "適用";
-            this.applyTimer = null;
-        }, 900);
-        this.cb.onChange();
+        }
     }
 
     private onClearAll(): void {

@@ -32,6 +32,8 @@ export class Visual implements IVisual {
     private lastFilterSig = "";
     private pendingApply = false;
     private applyFallbackTimer: number | null = null;
+    private persistedSeen = false;
+    private lastStateSig = "";
     private uniquesCache: { catRef: unknown; result: string[][] } | null = null;
     private lastColsRef: unknown = null;
     private lastUniquesRef: unknown = null;
@@ -69,10 +71,24 @@ export class Visual implements IVisual {
             this.form.setColumns(cols, uniques);
         }
 
-        // UI 状態は jsonFilters を唯一の真実源とする（dateCalendar と同方針）。
-        // metadata.objects.state は書くが読まない: 「全フィルターリセット」ブックマークは
-        // filter 層のみクリアして metadata を残すため、metadata 読み込みは stale state の
-        // 温床になる。cross-session 復元もブックマークも jsonFilters が担う。
+        // ブックマーク対応: ブックマークはカスタムビジュアルの metadata.objects.state
+        // を復元するが、適用済み AdvancedFilter を filter 層から必ずしも消さない。
+        // そこで metadata.state の外部変化を検知し、UI を復元したうえで「現状態で
+        // フィルタを再発火」して filter 層を同期する（空条件なら remove＝リセット成立）。
+        const stateSig = this.computeStateSig(dv);
+        if (!this.persistedSeen) {
+            this.persistedSeen = true;
+            this.lastStateSig = stateSig;
+        } else if (stateSig !== this.lastStateSig) {
+            // 自分の persist では無い外部変化（＝ブックマーク）
+            this.lastStateSig = stateSig;
+            this.restoreFromPersisted(dv);
+            this.emitCurrent();   // filter 層を UI に合わせて同期（空なら除去）
+            this.clearPending();
+            return;               // jsonFilters 復元は次サイクルに委ねる
+        }
+
+        // 外部 jsonFilters からの復元（スライサー同期）。
         // Data 更新時のみ未適用入力もリセット対象に（resize/style では typing を壊さない）。
         const isDataUpdate = ((options.type ?? VisualUpdateType.All) & VisualUpdateType.Data) !== 0;
         this.restoreFromJsonFilters(options.jsonFilters, cols, isDataUpdate);
@@ -121,6 +137,8 @@ export class Visual implements IVisual {
             this.lastFilterSig = result.sig;
         }
         this.persist(conds, columnLogic);
+        // 自分の persist は外部変化として誤検知しないよう sig を更新
+        this.lastStateSig = this.makeStateSig(conds, columnLogic);
 
         // 発火したら jsonFilters エコー受信までスピナー継続。発火しなければ即解除。
         if (result.emitted) {
@@ -141,6 +159,75 @@ export class Visual implements IVisual {
             this.applyFallbackTimer = null;
         }
         this.form.setApplying(false);
+    }
+
+    /** 現在のフォーム状態で filter を再発火（ブックマーク復元時の同期用、スピナー無し） */
+    private emitCurrent(): void {
+        const cols = (this.lastColsRef as powerbi.DataViewMetadataColumn[] | null) ?? [];
+        const conds = this.form.getConditions();
+        const columnLogic = this.form.getColumnLogic();
+        const result = emitAdvancedFilter(this.host, cols, conds, columnLogic, this.lastFilterSig);
+        if (result.emitted || result.sig !== this.lastFilterSig) {
+            this.lastFilterSig = result.sig;
+        }
+    }
+
+    /** metadata.objects.state の状態シグネチャ（外部=ブックマーク書き換え検知用） */
+    private computeStateSig(dv: DataView | null): string {
+        const s = dv?.metadata?.objects?.["state"];
+        if (!s) return "";
+        const c = String(s["conditionsJson"] ?? "");
+        const l = String(s["columnLogicJson"] ?? s["logic"] ?? "");
+        return `${c}\0${l}`;
+    }
+
+    /** 自分が書き込む state のシグネチャ（computeStateSig と一致する形式） */
+    private makeStateSig(conds: FilterCondition[], columnLogic: ColumnLogic): string {
+        return `${JSON.stringify(conds)}\0${JSON.stringify(columnLogic)}`;
+    }
+
+    /** metadata.objects.state から UI を復元（空ならデフォルト1行へ）。ブックマーク復元用 */
+    private restoreFromPersisted(dv: DataView | null): void {
+        const s = dv?.metadata?.objects?.["state"];
+        const json = s ? String(s["conditionsJson"] ?? "") : "";
+        const colLogicJson = s ? String(s["columnLogicJson"] ?? "") : "";
+
+        const conds: FilterCondition[] = [];
+        if (json) {
+            try {
+                const parsed = JSON.parse(json) as unknown;
+                if (Array.isArray(parsed)) {
+                    for (const raw of parsed) {
+                        if (!raw || typeof raw !== "object") continue;
+                        const r = raw as Record<string, unknown>;
+                        const ci = Number(r.columnIndex);
+                        const op = r.operator;
+                        const val = String(r.value ?? "");
+                        if (!Number.isFinite(ci)) continue;
+                        if (op !== "contains" && op !== "notContains" && op !== "gte" && op !== "lte") continue;
+                        conds.push({ columnIndex: ci, operator: op, value: val });
+                    }
+                }
+            } catch { /* ignore */ }
+        }
+
+        const columnLogic: ColumnLogic = {};
+        if (colLogicJson) {
+            try {
+                const parsed = JSON.parse(colLogicJson) as unknown;
+                if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+                        if (v === "OR" || v === "AND") columnLogic[k] = v;
+                    }
+                }
+            } catch { /* ignore */ }
+        }
+
+        if (conds.length === 0) {
+            this.form.resetToDefault();
+        } else {
+            this.form.setState(conds, columnLogic);
+        }
     }
 
     // ==========================================================

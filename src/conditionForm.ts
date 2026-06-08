@@ -27,6 +27,7 @@ export class ConditionForm {
     private uniquesPerCol: string[][] = [];
     private datalistHost: HTMLElement;
     private initialized = false;
+    private applyTimer: number | null = null;
 
     constructor(container: HTMLElement, private cb: ConditionFormCallbacks) {
         this.root = document.createElement("div");
@@ -64,8 +65,21 @@ export class ConditionForm {
         this.applyBtn.type = "button";
         this.applyBtn.className = "fc-apply-btn";
         this.applyBtn.textContent = "適用";
-        this.applyBtn.onclick = () => this.cb.onChange();
+        this.applyBtn.onclick = () => this.triggerApply();
         footer.appendChild(this.applyBtn);
+    }
+
+    /** 適用発火＋「適用中…」スピナーを一定時間表示（操作が通った即時フィードバック） */
+    private triggerApply(): void {
+        this.applyBtn.classList.add("fc-applying");
+        this.applyBtn.textContent = "適用中…";
+        if (this.applyTimer !== null) clearTimeout(this.applyTimer);
+        this.applyTimer = window.setTimeout(() => {
+            this.applyBtn.classList.remove("fc-applying");
+            this.applyBtn.textContent = "適用";
+            this.applyTimer = null;
+        }, 900);
+        this.cb.onChange();
     }
 
     private onClearAll(): void {
@@ -303,7 +317,7 @@ export class ConditionForm {
         input.onkeydown = (e: KeyboardEvent) => {
             if (e.key === "Enter") {
                 cond.value = input.value;
-                this.cb.onChange();
+                this.triggerApply();
             }
         };
         row.appendChild(input);

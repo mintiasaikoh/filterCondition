@@ -157,6 +157,28 @@
     filter: brightness(1.1);
 }
 
+.fc-apply-btn.fc-applying {
+    opacity: 0.85;
+    cursor: progress;
+}
+
+.fc-apply-btn.fc-applying::before {
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 6px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: fc-spin 0.6s linear infinite;
+    vertical-align: -1px;
+}
+
+@keyframes fc-spin {
+    to { transform: rotate(360deg); }
+}
+
 .fc-logic {
     display: flex;
     align-items: center;

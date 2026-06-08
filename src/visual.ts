@@ -114,8 +114,10 @@ export class Visual implements IVisual {
             }
             out.push(c);
         };
-        for (const cat of dv?.categorical?.categories ?? []) add(cat?.source);
+        // 「列」(values) を先、「候補列」(categories) を後に並べる
+        // （候補列がドロップダウン先頭に来てしまうのを防ぐ）
         for (const val of dv?.categorical?.values ?? []) add(val?.source);
+        for (const cat of dv?.categorical?.categories ?? []) add(cat?.source);
         return out;
     }
 

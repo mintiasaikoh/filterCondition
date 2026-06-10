@@ -34,6 +34,7 @@ export class Visual implements IVisual {
     private applyFallbackTimer: number | null = null;
     private persistedSeen = false;
     private lastStateSig = "";
+    private awaitingPersist = false;
     private uniquesCache: { catRef: unknown; result: string[][] } | null = null;
     private lastColsRef: unknown = null;
     private lastUniquesRef: unknown = null;
@@ -79,8 +80,15 @@ export class Visual implements IVisual {
         if (!this.persistedSeen) {
             this.persistedSeen = true;
             this.lastStateSig = stateSig;
-        } else if (stateSig !== this.lastStateSig) {
-            // 自分の persist では無い外部変化（＝ブックマーク）
+        } else if (stateSig === this.lastStateSig) {
+            // 自分の persist が反映された（または変化なし）→ 待機解除
+            this.awaitingPersist = false;
+        } else if (this.awaitingPersist) {
+            // 自分の persist がまだ metadata に届いていない stale 読み。
+            // ここで「外部変化」と誤検知すると古い条件を復元してクリアが取り消される。
+            // 反映を待つだけ（何もしない）。
+        } else {
+            // 自分の persist では無い真の外部変化（＝ブックマーク）
             this.lastStateSig = stateSig;
             this.restoreFromPersisted(dv);
             this.emitCurrent();   // filter 層を UI に合わせて同期（空なら除去）
@@ -139,8 +147,10 @@ export class Visual implements IVisual {
             this.lastFilterSig = result.sig;
         }
         this.persist(conds, columnLogic);
-        // 自分の persist は外部変化として誤検知しないよう sig を更新
+        // 自分の persist は外部変化として誤検知しないよう sig を更新＋反映待ちフラグ。
+        // （persist は非同期で、直後の update には古い metadata が届きうるため）
         this.lastStateSig = this.makeStateSig(conds, columnLogic);
+        this.awaitingPersist = true;
 
         // 発火したら jsonFilters エコー受信までスピナー継続。発火しなければ即解除。
         if (result.emitted) {

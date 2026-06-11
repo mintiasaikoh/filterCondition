@@ -49,6 +49,7 @@ export class Visual implements IVisual {
 
         this.form = new ConditionForm(this.root, {
             onChange: () => this.onFormChange(),
+            onEdit: () => this.persistUiState(),
         });
     }
 
@@ -161,6 +162,19 @@ export class Visual implements IVisual {
         } else {
             this.clearPending();
         }
+    }
+
+    /**
+     * 適用せずとも UI 状態（条件構造）を persist。フィルタは発火しない。
+     * これで「未適用で行追加しただけ」でも metadata が UI を反映し、
+     * ブックマークリセット時に変化が検知されて UI がリセットされる。
+     */
+    private persistUiState(): void {
+        const conds = this.form.getConditions();
+        const columnLogic = this.form.getColumnLogic();
+        this.persist(conds, columnLogic);
+        this.lastStateSig = this.makeStateSig(conds, columnLogic);
+        this.awaitingPersist = true;
     }
 
     /** スピナー解除＋フォールバックタイマー停止 */

@@ -6,6 +6,8 @@ import { ColumnLogic, GlobalLogic } from "./advancedFilterEmitter";
 
 export interface ConditionFormCallbacks {
     onChange: () => void;
+    /** 適用せずとも構造が変わった時（行追加/削除/列変更）に呼ぶ。UI 状態の persist 用 */
+    onEdit?: () => void;
 }
 
 interface ColumnOption {
@@ -184,6 +186,7 @@ export class ConditionForm {
         if (firstFree < 0) return;
         this.conditions.push({ columnIndex: firstFree, operator: "contains", value: "" });
         this.render();
+        this.cb.onEdit?.();
     }
 
     private findFreeColumn(): number {
@@ -284,6 +287,7 @@ export class ConditionForm {
         colSel.onchange = () => {
             cond.columnIndex = parseInt(colSel.value, 10);
             this.render();
+            this.cb.onEdit?.();
         };
         row.appendChild(colSel);
 
@@ -334,6 +338,7 @@ export class ConditionForm {
         del.onclick = () => {
             this.conditions.splice(idx, 1);
             this.render();
+            this.cb.onEdit?.();
         };
         row.appendChild(del);
 

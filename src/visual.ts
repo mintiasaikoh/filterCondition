@@ -12,7 +12,7 @@ import VisualUpdateType = powerbi.VisualUpdateType;
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 
 import { ConditionForm } from "./conditionForm";
-import { FilterCondition } from "./filterEngine";
+import { FilterCondition, FilterOp, isConditionActive } from "./filterEngine";
 import {
     emitAdvancedFilter,
     restoreFromAdvancedFilters,
@@ -35,7 +35,7 @@ export class Visual implements IVisual {
     private persistedSeen = false;
     private lastStateSig = "";
     private awaitingPersist = false;
-    private uniquesCache: { catRef: unknown; result: string[][] } | null = null;
+    private uniquesCache: { catRef: unknown; condsSig: string; result: string[][] } | null = null;
     private lastColsRef: unknown = null;
     private lastUniquesRef: unknown = null;
 
@@ -65,7 +65,7 @@ export class Visual implements IVisual {
         this.applyAppearance();
 
         const cols = this.resolveColumns(dv);
-        const uniques = this.extractUniques(dv, cols);
+        const uniques = this.extractUniques(dv, cols, this.form.getConditions());
         // cols / uniques の参照が変わっていなければ DOM 再構築をスキップ
         if (cols !== this.lastColsRef || uniques !== this.lastUniquesRef) {
             this.lastColsRef = cols;
@@ -312,33 +312,74 @@ export class Visual implements IVisual {
     // ==========================================================
 
     /**
-     * categorical.categories（=候補列にバインドされた列のみ）から distinct を抽出。
-     * 候補列はユーザーが明示指定する低 card 列なので全 distinct を表示（DISPLAY_CAP まで）。
-     * TEST/ダミーを含む値は除外。queryName で cols に割当。列(metadata のみ)は候補なし。
+     * categorical.categories（=候補列）から distinct を抽出。カスケード絞り込み付き。
+     * 適用中の active 条件（候補列を target にするもの）でタプルを絞り、各候補列は
+     * 「自分以外の条件を満たすタプル」の distinct を返す。
+     * → 1 行目で組織名を絞ると 2 行目以降の候補がそれに連動して減る。
+     * Power BI は適用元ビジュアル自身を再クエリしないので、ここでクライアント側に実施。
+     * TEST/ダミー除外、DISPLAY_CAP まで。列(metadata のみ)は候補なし。
      */
     private extractUniques(
         dv: DataView | null,
         cols: powerbi.DataViewMetadataColumn[],
+        conds: FilterCondition[],
     ): string[][] {
         const categories = dv?.categorical?.categories ?? [];
+        const condsSig = JSON.stringify(
+            conds.filter(isConditionActive).map(c => [c.columnIndex, c.operator, c.value])
+        );
 
-        if (this.uniquesCache && this.uniquesCache.catRef === categories) {
+        if (this.uniquesCache
+            && this.uniquesCache.catRef === categories
+            && this.uniquesCache.condsSig === condsSig) {
             return this.uniquesCache.result;
         }
 
         if (categories.length === 0) {
             const empty = cols.map(() => [] as string[]);
-            this.uniquesCache = { catRef: categories, result: empty };
+            this.uniquesCache = { catRef: categories, condsSig, result: empty };
             return empty;
         }
 
-        const DISPLAY_CAP = 200; // datalist が肥大しないための上限
+        // queryName → category(候補列) index
+        const catIdxByQn = new Map<string, number>();
+        categories.forEach((cat, i) => {
+            const qn = cat?.source?.queryName;
+            if (qn) catIdxByQn.set(qn, i);
+        });
+
+        // 候補列を target にする active 条件だけをタプル制約にする
+        const constraints: { catIdx: number; op: FilterOp; value: string }[] = [];
+        for (const c of conds) {
+            if (!isConditionActive(c)) continue;
+            const qn = cols[c.columnIndex]?.queryName;
+            if (!qn) continue;
+            const catIdx = catIdxByQn.get(qn);
+            if (catIdx === undefined) continue; // 「列」側 or 未マッチ → 制約にしない
+            constraints.push({ catIdx, op: c.operator, value: c.value });
+        }
+
+        const DISPLAY_CAP = 200;
+        const tupleCount = categories[0]?.values?.length ?? 0;
         const byQueryName = new Map<string, string[]>();
-        for (const cat of categories) {
+        for (let ci = 0; ci < categories.length; ci++) {
+            const cat = categories[ci];
             const src = cat?.source;
             if (!src) continue;
+            const vals = cat.values ?? [];
             const set = new Set<string>();
-            for (const v of cat.values ?? []) {
+            for (let t = 0; t < tupleCount; t++) {
+                // 自分以外の制約を満たすタプルだけ（カスケード）
+                let ok = true;
+                for (const con of constraints) {
+                    if (con.catIdx === ci) continue;
+                    if (!this.evalCond(categories[con.catIdx].values[t], con.op, con.value)) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) continue;
+                const v = vals[t];
                 if (v == null) continue;
                 const s = String(v);
                 if (s === "") continue;
@@ -351,8 +392,21 @@ export class Visual implements IVisual {
         }
 
         const result = cols.map(c => byQueryName.get(c?.queryName ?? "") ?? []);
-        this.uniquesCache = { catRef: categories, result };
+        this.uniquesCache = { catRef: categories, condsSig, result };
         return result;
+    }
+
+    /** タプル値が条件 (op, value) を満たすか（カスケード用、emit と同じ意味論） */
+    private evalCond(tv: powerbi.PrimitiveValue, op: FilterOp, value: string): boolean {
+        if (tv == null) return false;
+        if (op === "contains" || op === "notContains") {
+            const hit = String(tv).toLowerCase().includes(value.toLowerCase());
+            return op === "contains" ? hit : !hit;
+        }
+        const n = Number(tv);
+        const nv = Number(value);
+        if (!Number.isFinite(n) || !Number.isFinite(nv)) return false;
+        return op === "gte" ? n >= nv : n <= nv;
     }
 
     private applyAppearance(): void {

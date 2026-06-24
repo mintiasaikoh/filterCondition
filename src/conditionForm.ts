@@ -320,7 +320,7 @@ export class ConditionForm {
         const listId = this.datalistIdFor(cond.columnIndex);
         if (listId) input.setAttribute("list", listId);
         input.oninput = () => { cond.value = input.value; };
-        input.onchange = () => { cond.value = input.value; };
+        input.onchange = () => { cond.value = input.value; this.cb.onEdit?.(); };
         input.onkeydown = (e: KeyboardEvent) => {
             if (e.key === "Enter") {
                 cond.value = input.value;

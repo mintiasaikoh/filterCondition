@@ -290,8 +290,10 @@ export class Visual implements IVisual {
         if (!restored) {
             // 自分の filter 解除が反映された（remove のエコー）→ スピナー解除
             if (this.pendingApply && isDataUpdate) this.clearPending();
-            const shouldResetDirty = isDataUpdate && this.form.hasAnyInput();
-            if (this.lastFilterSig !== "" || shouldResetDirty) {
+            // 適用済み filter が消えた場合のみ UI リセット。
+            // 未適用入力は metadata 経路（typed 値も persist 済み）でブックマーク検知する。
+            // ここで「入力あり=リセット」にすると条件追加等の自前更新で入力が消える。
+            if (this.lastFilterSig !== "") {
                 this.lastFilterSig = "";
                 this.form.resetToDefault();
             }

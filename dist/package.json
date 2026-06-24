@@ -1,5 +1,5 @@
 {
-		"version": "1.0.13.0",
+		"version": "1.0.14.0",
 		"author": {"name":"mintiasaikoh","email":"yasunoritani@gmail.com"},
 		"resources": [
 			{
@@ -8,7 +8,7 @@
 				"file": "resources/filterConditionVisual.pbiviz.json"
 			}
 		],
-		"visual": {"name":"filterCondition","displayName":"条件フィルター","guid":"filterConditionVisual","visualClassName":"Visual","version":"1.0.13.0","description":"contains / notContains 条件でクロスページフィルターを発火する軽量フォーム","supportUrl":"https://github.com/mintiasaikoh/filterCondition/issues","gitHubUrl":"https://github.com/mintiasaikoh/filterCondition"},
+		"visual": {"name":"filterCondition","displayName":"条件フィルター","guid":"filterConditionVisual","visualClassName":"Visual","version":"1.0.14.0","description":"contains / notContains 条件でクロスページフィルターを発火する軽量フォーム","supportUrl":"https://github.com/mintiasaikoh/filterCondition/issues","gitHubUrl":"https://github.com/mintiasaikoh/filterCondition"},
 		"metadata": {
 			"pbivizjson": {
 				"resourceId": "rId0"

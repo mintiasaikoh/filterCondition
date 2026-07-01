@@ -48,10 +48,11 @@ export function emitAdvancedFilter(
 ): EmitResult {
     const active = conds.filter(isConditionActive);
 
-    // 条件なし → 既発火があれば remove
+    // 条件なし → 既発火があれば remove（selfFilter も揃えて除去）
     if (active.length === 0) {
         if (lastSig === "") return { sig: "", emitted: false };
         host.applyJsonFilter(null, "general", "filter", FilterAction.remove);
+        applySelfFilter(host, null);
         return { sig: "", emitted: true };
     }
 
@@ -109,6 +110,7 @@ export function emitAdvancedFilter(
     if (filters.length === 0) {
         if (lastSig === "") return { sig: "", emitted: false };
         host.applyJsonFilter(null, "general", "filter", FilterAction.remove);
+        applySelfFilter(host, null);
         return { sig: "", emitted: true };
     }
 
@@ -116,7 +118,24 @@ export function emitAdvancedFilter(
     if (sig === lastSig) return { sig, emitted: false };
 
     host.applyJsonFilter(filters, "general", "filter", FilterAction.merge);
+    // selfFilter: 同じ条件を自ビジュアルの dataview にも適用（ネイティブスライサーの
+    // 検索ボックスと同じ仕組み）。これで候補列のタプルがサーバー側で行レベルに絞られ、
+    // 「列」(values role) への条件でも候補がカスケードする。他ビジュアルには影響しない。
+    applySelfFilter(host, filters);
     return { sig, emitted: true };
+}
+
+/** selfFilter の適用/除去。未対応ホストで main filter を巻き込まないよう隔離 */
+function applySelfFilter(host: IVisualHost, filters: AdvancedFilter[] | null): void {
+    try {
+        if (filters && filters.length > 0) {
+            host.applyJsonFilter(filters, "general", "selfFilter", FilterAction.merge);
+        } else {
+            host.applyJsonFilter(null, "general", "selfFilter", FilterAction.remove);
+        }
+    } catch {
+        // selfFilter 未対応環境では候補カスケードが効かないだけ（main filter は正常）
+    }
 }
 
 // ==========================================================
@@ -155,10 +174,17 @@ export function restoreFromAdvancedFilters(
 
     const restored: Restored[] = [];
     const columnLogic: ColumnLogic = {};
+    const seenFilters = new Set<string>();
 
     for (const af of advanced) {
         const tgt = af.target as IFilterColumnTarget;
         if (!tgt || !af.conditions || af.conditions.length === 0) continue;
+
+        // filter と selfFilter が同一内容でエコーされるケースの dedupe
+        const dedupeKey = `${tgt.table}\0${tgt.column}\0` +
+            af.conditions.map(c => `${c.operator}:${c.value}`).sort().join(",");
+        if (seenFilters.has(dedupeKey)) continue;
+        seenFilters.add(dedupeKey);
 
         let colIdx = -1;
         for (let i = 0; i < cols.length; i++) {

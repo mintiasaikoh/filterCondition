@@ -14,7 +14,8 @@
     "objects": {
         "general": {
             "properties": {
-                "filter": { "type": { "filter": true } }
+                "filter": { "type": { "filter": true } },
+                "selfFilter": { "type": { "filter": { "selfFilter": true } } }
             }
         },
         "state": {

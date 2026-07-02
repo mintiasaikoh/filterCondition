@@ -1,0 +1,21 @@
+{
+    "compilerOptions": {
+        "allowJs": false,
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "target": "es2022",
+        "module": "commonjs",
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "sourceMap": false,
+        "declaration": false,
+        "skipLibCheck": true,
+        "rootDir": "..",
+        "outDir": "./build",
+        "lib": ["es2022", "dom"]
+    },
+    "files": [
+        "../src/visual.ts",
+        "./less-shim.d.ts"
+    ]
+}

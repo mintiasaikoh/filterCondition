@@ -116,6 +116,25 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
     check("クリアで emitted", cleared.emitted === true && cleared.sig === "");
     check("main remove", calls.some(c => c.prop === "filter" && c.action === 1 && c.f === null));
     check("selfFilter remove", calls.some(c => c.prop === "selfFilter" && c.action === 1 && c.f === null));
+
+    // --- selfFilter の候補列条件除外（自列候補を殺さないため） ---
+    // col0 が候補列の場合: main は全条件、selfFilter は列(メジャー)側の条件のみ
+    calls.length = 0;
+    emitAdvancedFilter(host, cols, conds, { "0": "OR" }, "", new Set([0]));
+    const mainSplit = calls.find(c => c.prop === "filter");
+    const selfSplit = calls.find(c => c.prop === "selfFilter");
+    check("split: main は全列（2 フィルタ）", mainSplit && Array.isArray(mainSplit.f) && mainSplit.f.length === 2,
+        mainSplit && JSON.stringify(mainSplit.f?.map(f => f.target.column)));
+    check("split: selfFilter は列側のみ（B のみ）", selfSplit && Array.isArray(selfSplit.f)
+        && selfSplit.f.length === 1 && selfSplit.f[0].target.column === "B",
+        selfSplit && JSON.stringify(Array.isArray(selfSplit.f) ? selfSplit.f.map(f => f.target.column) : selfSplit.f));
+
+    // 候補列の条件しか無い場合 → selfFilter は remove（サーバー側では一切絞らない）
+    calls.length = 0;
+    emitAdvancedFilter(host, cols, [conds[0], conds[1]], { "0": "OR" }, "", new Set([0]));
+    check("split: 候補列条件のみ → selfFilter remove",
+        calls.some(c => c.prop === "selfFilter" && c.f === null && c.action === 1),
+        JSON.stringify(calls.filter(c => c.prop === "selfFilter")));
 }
 
 // ---------------- ヘルパ ----------------
@@ -195,6 +214,10 @@ section("D: update フロー");
     form.setState([{ columnIndex: orgIdx, operator: "contains", value: "営業" }], {});
     v.onFormChange();
     check("適用: main+selfFilter 発火", calls.filter(c => c.prop === "filter").length === 1 && calls.filter(c => c.prop === "selfFilter").length === 1);
+    // 組織名は候補列 → selfFilter に自列条件を載せない（remove になる）
+    const selfCall = calls.find(c => c.prop === "selfFilter");
+    check("適用: selfFilter は候補列条件を含まない", selfCall && selfCall.f === null && selfCall.action === 1,
+        selfCall && JSON.stringify(Array.isArray(selfCall.f) ? selfCall.f.map(f => f.target.column) : selfCall.f));
     check("適用: persist 実行", persists.length === 1);
     check("適用: スピナー点灯 (pendingApply)", v.pendingApply === true);
     const emittedFilters = calls.find(c => c.prop === "filter").f;

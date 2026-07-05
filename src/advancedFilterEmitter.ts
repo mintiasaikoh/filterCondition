@@ -38,6 +38,11 @@ const logicFor = (logic: ColumnLogic, ci: number): GlobalLogic =>
 /**
  * 条件から AdvancedFilter を組み立てて発火。
  * 列ごとの logicalOperator は columnLogic で個別指定（列間は Power BI が暗黙 AND で結合）。
+ *
+ * candidateCols（候補列の col index 集合）を渡すと、selfFilter からその列の条件を除外する。
+ * 理由: selfFilter は自ビジュアルの dataview 全体を絞るため、候補列の条件を含めると
+ * 「自列の候補が自分の条件で消える」。候補列同士の絞り込みはクライアント側カスケード
+ * （extractUniques、自列除外済み）が担うので、selfFilter は列(values role)側の条件のみで良い。
  */
 export function emitAdvancedFilter(
     host: IVisualHost,
@@ -45,6 +50,7 @@ export function emitAdvancedFilter(
     conds: FilterCondition[],
     columnLogic: ColumnLogic,
     lastSig: string,
+    candidateCols?: Set<number>,
 ): EmitResult {
     const active = conds.filter(isConditionActive);
 
@@ -80,6 +86,7 @@ export function emitAdvancedFilter(
     };
 
     const filters: AdvancedFilter[] = [];
+    const selfFilters: AdvancedFilter[] = [];
     const sigParts: string[] = [];
 
     for (const [ci, condList] of byCol) {
@@ -103,7 +110,9 @@ export function emitAdvancedFilter(
         const logical: AdvancedFilterLogicalOperators =
             logicFor(columnLogic, ci) === "OR" ? "Or" : "And";
 
-        filters.push(new AdvancedFilter(target, logical, ...advConds));
+        const filter = new AdvancedFilter(target, logical, ...advConds);
+        filters.push(filter);
+        if (!candidateCols || !candidateCols.has(ci)) selfFilters.push(filter);
         sigParts.push(filterConditionSignature(target, logical, sigItems));
     }
 
@@ -118,10 +127,11 @@ export function emitAdvancedFilter(
     if (sig === lastSig) return { sig, emitted: false };
 
     host.applyJsonFilter(filters, "general", "filter", FilterAction.merge);
-    // selfFilter: 同じ条件を自ビジュアルの dataview にも適用（ネイティブスライサーの
-    // 検索ボックスと同じ仕組み）。これで候補列のタプルがサーバー側で行レベルに絞られ、
-    // 「列」(values role) への条件でも候補がカスケードする。他ビジュアルには影響しない。
-    applySelfFilter(host, filters);
+    // selfFilter: 列(values role)側の条件だけを自ビジュアルの dataview に適用
+    // （ネイティブスライサーの検索ボックスと同じ仕組み）。候補列の条件は
+    // クライアント側カスケードが自列除外付きで処理するため含めない。
+    // 空なら remove（サーバー側では絞らない）。他ビジュアルには影響しない。
+    applySelfFilter(host, selfFilters);
     return { sig, emitted: true };
 }
 

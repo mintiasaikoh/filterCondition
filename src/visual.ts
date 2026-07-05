@@ -143,7 +143,8 @@ export class Visual implements IVisual {
         const conds = this.form.getConditions();
         const columnLogic = this.form.getColumnLogic();
 
-        const result = emitAdvancedFilter(this.host, cols, conds, columnLogic, this.lastFilterSig);
+        const result = emitAdvancedFilter(
+            this.host, cols, conds, columnLogic, this.lastFilterSig, this.candidateColIdx(cols));
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
@@ -192,10 +193,25 @@ export class Visual implements IVisual {
         const cols = (this.lastColsRef as powerbi.DataViewMetadataColumn[] | null) ?? [];
         const conds = this.form.getConditions();
         const columnLogic = this.form.getColumnLogic();
-        const result = emitAdvancedFilter(this.host, cols, conds, columnLogic, this.lastFilterSig);
+        const result = emitAdvancedFilter(
+            this.host, cols, conds, columnLogic, this.lastFilterSig, this.candidateColIdx(cols));
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
+    }
+
+    /** 候補列（categorical.categories 由来）に対応する col index の集合 */
+    private candidateColIdx(cols: powerbi.DataViewMetadataColumn[]): Set<number> {
+        const catQn = new Set<string>();
+        for (const cat of this.lastDataView?.categorical?.categories ?? []) {
+            const qn = cat?.source?.queryName;
+            if (qn) catQn.add(qn);
+        }
+        const s = new Set<number>();
+        cols.forEach((c, i) => {
+            if (catQn.has(c?.queryName ?? "")) s.add(i);
+        });
+        return s;
     }
 
     /** metadata.objects.state の状態シグネチャ（外部=ブックマーク書き換え検知用） */

@@ -268,5 +268,69 @@ section("D: update フロー");
         JSON.stringify(v2.form.getConditions()));
 }
 
+// ---------------- E: 復元時の selfFilter 同期 ----------------
+section("E: 復元時の selfFilter 同期");
+{
+    const { v, calls } = makeVisual();
+    const DATA = 2;
+
+    // レポート再オープン相当: 初回 update の jsonFilters に自分の main filter が既に載っている
+    const jf = [
+        {
+            filterType: 0, target: { table: "T", column: "組織名" }, logicalOperator: "And",
+            conditions: [{ operator: "Contains", value: "営業" }],
+        },
+        {
+            filterType: 0, target: { table: "T", column: "金額" }, logicalOperator: "And",
+            conditions: [{ operator: "GreaterThanOrEqual", value: 3 }],
+        },
+    ];
+    v.update({ dataViews: [makeDv(undefined)], jsonFilters: jf, type: DATA });
+    check("復元: UI に 2 条件", v.form.getConditions().length === 2,
+        JSON.stringify(v.form.getConditions()));
+    const selfMerge = calls.find(c => c.prop === "selfFilter" && Array.isArray(c.f));
+    check("復元: selfFilter 同期発火（列側 金額 のみ）",
+        selfMerge && selfMerge.f.length === 1 && selfMerge.f[0].target.column === "金額",
+        JSON.stringify(calls.filter(c => c.prop === "selfFilter")));
+    check("復元: main filter は再発火しない", !calls.some(c => c.prop === "filter"),
+        JSON.stringify(calls.filter(c => c.prop === "filter")));
+
+    // 外部クリア: フィルタ層から自分の filter が消えた → selfFilter も remove
+    calls.length = 0;
+    v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+    check("外部クリア: UI リセット", v.form.getConditions().length === 1 && v.form.getConditions()[0].value === "",
+        JSON.stringify(v.form.getConditions()));
+    check("外部クリア: selfFilter remove（残留しない）",
+        calls.some(c => c.prop === "selfFilter" && c.f === null && c.action === 1),
+        JSON.stringify(calls));
+    check("外部クリア: main は発火しない", !calls.some(c => c.prop === "filter"),
+        JSON.stringify(calls.filter(c => c.prop === "filter")));
+}
+
+// ---------------- F: 未適用条件はカスケードに使わない ----------------
+section("F: 未適用条件はカスケードに使わない");
+{
+    const { v } = makeVisual();
+    const DATA = 2;
+    v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+    const cols = v.lastColsRef;
+    const orgIdx = cols.findIndex(c => c.queryName === "T.組織名");
+    const depIdx = cols.findIndex(c => c.queryName === "T.部署");
+
+    // 入力しただけ（未適用）で update が来ても候補は絞られない
+    v.form.setState([{ columnIndex: orgIdx, operator: "contains", value: "営業" }], {});
+    v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+    const uniq = v.lastUniquesRef;
+    check("未適用 typing はカスケードに効かない（部署 6 件のまま）", uniq[depIdx].length === 6,
+        JSON.stringify(uniq[depIdx]));
+
+    // 適用したら効く
+    v.onFormChange();
+    v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+    const uniq2 = v.lastUniquesRef;
+    check("適用後はカスケードが効く（部署 2 件）", uniq2[depIdx].length === 2,
+        JSON.stringify(uniq2[depIdx]));
+}
+
 console.log(`\n===== 結果: pass=${pass} fail=${fail} =====`);
 process.exit(fail === 0 ? 0 : 1);

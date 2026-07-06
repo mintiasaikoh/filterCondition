@@ -62,6 +62,62 @@ export function emitAdvancedFilter(
         return { sig: "", emitted: true };
     }
 
+    const { filters, selfFilters, sigParts } = buildFilters(cols, active, columnLogic, candidateCols);
+
+    if (filters.length === 0) {
+        if (lastSig === "") return { sig: "", emitted: false };
+        host.applyJsonFilter(null, "general", "filter", FilterAction.remove);
+        applySelfFilter(host, null);
+        return { sig: "", emitted: true };
+    }
+
+    const sig = SIG_PREFIX + sigParts.slice().sort().join("|");
+    if (sig === lastSig) return { sig, emitted: false };
+
+    host.applyJsonFilter(filters, "general", "filter", FilterAction.merge);
+    // selfFilter: 列(values role)側の条件だけを自ビジュアルの dataview に適用
+    // （ネイティブスライサーの検索ボックスと同じ仕組み）。候補列の条件は
+    // クライアント側カスケードが自列除外付きで処理するため含めない。
+    // 空なら remove（サーバー側では絞らない）。他ビジュアルには影響しない。
+    applySelfFilter(host, selfFilters);
+    return { sig, emitted: true };
+}
+
+/**
+ * jsonFilters 復元時に selfFilter だけを現状態へ同期する。
+ * main filter は既にフィルタ層にあるので再発火しない。
+ * レポート再オープン / ページ再訪 / 外部クリアの後、サーバー側候補カスケードを
+ * UI 状態と一致させるために呼ぶ。条件が空相当なら remove（残留防止）。
+ */
+export function syncSelfFilter(
+    host: IVisualHost,
+    cols: powerbi.DataViewMetadataColumn[],
+    conds: FilterCondition[],
+    columnLogic: ColumnLogic,
+    candidateCols?: Set<number>,
+): void {
+    const active = conds.filter(isConditionActive);
+    if (active.length === 0) {
+        applySelfFilter(host, null);
+        return;
+    }
+    const { selfFilters } = buildFilters(cols, active, columnLogic, candidateCols);
+    applySelfFilter(host, selfFilters);
+}
+
+interface BuiltFilters {
+    filters: AdvancedFilter[];
+    selfFilters: AdvancedFilter[];
+    sigParts: string[];
+}
+
+/** active 条件から列ごとの AdvancedFilter 群と signature 部品を構築 */
+function buildFilters(
+    cols: powerbi.DataViewMetadataColumn[],
+    active: FilterCondition[],
+    columnLogic: ColumnLogic,
+    candidateCols?: Set<number>,
+): BuiltFilters {
     // 列ごとにグループ化（1 列最大 2 条件）
     const byCol = new Map<number, FilterCondition[]>();
     for (const c of active) {
@@ -116,23 +172,7 @@ export function emitAdvancedFilter(
         sigParts.push(filterConditionSignature(target, logical, sigItems));
     }
 
-    if (filters.length === 0) {
-        if (lastSig === "") return { sig: "", emitted: false };
-        host.applyJsonFilter(null, "general", "filter", FilterAction.remove);
-        applySelfFilter(host, null);
-        return { sig: "", emitted: true };
-    }
-
-    const sig = SIG_PREFIX + sigParts.slice().sort().join("|");
-    if (sig === lastSig) return { sig, emitted: false };
-
-    host.applyJsonFilter(filters, "general", "filter", FilterAction.merge);
-    // selfFilter: 列(values role)側の条件だけを自ビジュアルの dataview に適用
-    // （ネイティブスライサーの検索ボックスと同じ仕組み）。候補列の条件は
-    // クライアント側カスケードが自列除外付きで処理するため含めない。
-    // 空なら remove（サーバー側では絞らない）。他ビジュアルには影響しない。
-    applySelfFilter(host, selfFilters);
-    return { sig, emitted: true };
+    return { filters, selfFilters, sigParts };
 }
 
 /** selfFilter の適用/除去。未対応ホストで main filter を巻き込まないよう隔離 */

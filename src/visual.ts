@@ -16,6 +16,7 @@ import { FilterCondition, FilterOp, isConditionActive } from "./filterEngine";
 import {
     emitAdvancedFilter,
     restoreFromAdvancedFilters,
+    syncSelfFilter,
     ColumnLogic,
 } from "./advancedFilterEmitter";
 import { VisualFormattingSettingsModel } from "./settings";
@@ -35,6 +36,8 @@ export class Visual implements IVisual {
     private persistedSeen = false;
     private lastStateSig = "";
     private awaitingPersist = false;
+    /** 適用済み条件（カスケードの根拠）。typing 中の未適用値はここに入れない */
+    private appliedConds: FilterCondition[] = [];
     private uniquesCache: { catRef: unknown; condsSig: string; result: string[][] } | null = null;
     private lastColsRef: unknown = null;
     private lastUniquesRef: unknown = null;
@@ -65,7 +68,8 @@ export class Visual implements IVisual {
         this.applyAppearance();
 
         const cols = this.resolveColumns(dv);
-        const uniques = this.extractUniques(dv, cols, this.form.getConditions());
+        // カスケードは「適用済み」条件のみ根拠にする（typing 中の値で候補を絞らない）
+        const uniques = this.extractUniques(dv, cols, this.appliedConds);
         // cols / uniques の参照が変わっていなければ DOM 再構築をスキップ
         if (cols !== this.lastColsRef || uniques !== this.lastUniquesRef) {
             this.lastColsRef = cols;
@@ -93,6 +97,7 @@ export class Visual implements IVisual {
             this.lastStateSig = stateSig;
             this.restoreFromPersisted(dv);
             this.emitCurrent();   // filter 層を UI に合わせて同期（空なら除去）
+            this.appliedConds = this.form.getConditions();
             this.clearPending();
             return;               // jsonFilters 復元は次サイクルに委ねる
         }
@@ -148,6 +153,7 @@ export class Visual implements IVisual {
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
+        this.appliedConds = conds;
         this.persist(conds, columnLogic);
         // 自分の persist は外部変化として誤検知しないよう sig を更新＋反映待ちフラグ。
         // （persist は非同期で、直後の update には古い metadata が届きうるため）
@@ -311,7 +317,10 @@ export class Visual implements IVisual {
             // ここで「入力あり=リセット」にすると条件追加等の自前更新で入力が消える。
             if (this.lastFilterSig !== "") {
                 this.lastFilterSig = "";
+                this.appliedConds = [];
                 this.form.resetToDefault();
+                // 外部クリアで main が消えても selfFilter は残留しうるので揃えて除去
+                syncSelfFilter(this.host, cols, [], {});
             }
             return;
         }
@@ -325,6 +334,10 @@ export class Visual implements IVisual {
         // 有効な active 条件が入ってきたら UI を上書き（ブックマーク含む）
         this.form.setState(restored.conditions, restored.columnLogic);
         this.lastFilterSig = restored.sig;
+        this.appliedConds = restored.conditions;
+        // レポート再オープン / ページ再訪では selfFilter は誰も発火していないため、
+        // サーバー側候補カスケードを復元状態に同期する（main は既に filter 層にあり再発火しない）
+        syncSelfFilter(this.host, cols, restored.conditions, restored.columnLogic, this.candidateColIdx(cols));
     }
 
     // ==========================================================

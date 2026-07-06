@@ -67,10 +67,13 @@ export class Visual implements IVisual {
             .populateFormattingSettingsModel(VisualFormattingSettingsModel, dv);
         this.applyAppearance();
 
-        const cols = this.resolveColumns(dv);
+        // cols / uniques は「内容が同じなら前回と同じ参照」に安定化する。
+        // update は persist やフィルタ操作のたびに来るため、毎回 DOM を再構築すると
+        // 入力中のフォーカス / IME 状態が破壊される。内容比較で参照を保てば
+        // 下の参照チェックで setColumns（全再描画）がスキップされる。
+        const cols = this.stableCols(this.resolveColumns(dv));
         // カスケードは「適用済み」条件のみ根拠にする（typing 中の値で候補を絞らない）
         const uniques = this.extractUniques(dv, cols, this.appliedConds);
-        // cols / uniques の参照が変わっていなければ DOM 再構築をスキップ
         if (cols !== this.lastColsRef || uniques !== this.lastUniquesRef) {
             this.lastColsRef = cols;
             this.lastUniquesRef = uniques;
@@ -139,6 +142,14 @@ export class Visual implements IVisual {
         return this.formattingSettingsService.buildFormattingModel(this.formattingSettings);
     }
 
+    /** ビジュアル破棄時にタイマーを残さない */
+    public destroy(): void {
+        if (this.applyFallbackTimer !== null) {
+            clearTimeout(this.applyFallbackTimer);
+            this.applyFallbackTimer = null;
+        }
+    }
+
     // ==========================================================
 
     private onFormChange(): void {
@@ -204,6 +215,20 @@ export class Visual implements IVisual {
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
+    }
+
+    /** 列リストの内容が前回と同一なら前回の配列参照を返す（DOM 再構築抑止） */
+    private stableCols(cols: powerbi.DataViewMetadataColumn[]): powerbi.DataViewMetadataColumn[] {
+        const prev = this.lastColsRef as powerbi.DataViewMetadataColumn[] | null;
+        if (!prev || prev.length !== cols.length) return cols;
+        for (let i = 0; i < cols.length; i++) {
+            const a = prev[i], b = cols[i];
+            if ((a?.queryName ?? "") !== (b?.queryName ?? "")
+                || (a?.displayName ?? "") !== (b?.displayName ?? "")) {
+                return cols;
+            }
+        }
+        return prev;
     }
 
     /** 候補列（categorical.categories 由来）に対応する col index の集合 */
@@ -367,7 +392,11 @@ export class Visual implements IVisual {
         }
 
         if (categories.length === 0) {
-            const empty = cols.map(() => [] as string[]);
+            let empty = cols.map(() => [] as string[]);
+            if (this.uniquesCache
+                && JSON.stringify(this.uniquesCache.result) === JSON.stringify(empty)) {
+                empty = this.uniquesCache.result;
+            }
             this.uniquesCache = { catRef: categories, condsSig, result: empty };
             return empty;
         }
@@ -422,7 +451,12 @@ export class Visual implements IVisual {
             byQueryName.set(src.queryName ?? "", Array.from(set).sort((a, b) => a.localeCompare(b)));
         }
 
-        const result = cols.map(c => byQueryName.get(c?.queryName ?? "") ?? []);
+        let result = cols.map(c => byQueryName.get(c?.queryName ?? "") ?? []);
+        // 内容が前回と同一なら前回の配列参照を返す（setColumns の全再描画を抑止）
+        if (this.uniquesCache
+            && JSON.stringify(this.uniquesCache.result) === JSON.stringify(result)) {
+            result = this.uniquesCache.result;
+        }
         this.uniquesCache = { catRef: categories, condsSig, result };
         return result;
     }

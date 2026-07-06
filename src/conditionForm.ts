@@ -323,6 +323,8 @@ export class ConditionForm {
         input.onchange = () => { cond.value = input.value; this.cb.onEdit?.(); };
         input.onkeydown = (e: KeyboardEvent) => {
             if (e.key === "Enter") {
+                // IME 変換確定の Enter では適用しない（日本語入力対応）
+                if (e.isComposing || e.keyCode === 229) return;
                 cond.value = input.value;
                 this.triggerApply();
             }

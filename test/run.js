@@ -332,5 +332,62 @@ section("F: 未適用条件はカスケードに使わない");
         JSON.stringify(uniq2[depIdx]));
 }
 
+// ---------------- G: UI ランタイム堅牢性 ----------------
+section("G: UI ランタイム堅牢性");
+{
+    const DATA = 2;
+
+    // --- IME 変換確定の Enter で誤適用しない ---
+    {
+        const { v, calls, element } = makeVisual();
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        const input = element.querySelector(".fc-val-input");
+        check("値入力欄が存在", !!input);
+        input.value = "営業";
+        input.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+        calls.length = 0;
+        // IME 変換確定の Enter（isComposing=true）
+        const imeEnter = new dom.window.KeyboardEvent("keydown", { key: "Enter" });
+        Object.defineProperty(imeEnter, "isComposing", { value: true });
+        input.dispatchEvent(imeEnter);
+        check("IME 確定 Enter では適用しない", !calls.some(c => c.prop === "filter"),
+            JSON.stringify(calls.map(c => c.prop)));
+        // 通常の Enter では適用する
+        const plainEnter = new dom.window.KeyboardEvent("keydown", { key: "Enter" });
+        input.dispatchEvent(plainEnter);
+        check("通常 Enter では適用する", calls.some(c => c.prop === "filter"),
+            JSON.stringify(calls.map(c => c.prop)));
+    }
+
+    // --- 内容が同じなら DOM を再構築しない（フォーカス/IME 保護） ---
+    {
+        const { v, element } = makeVisual();
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        const inputBefore = element.querySelector(".fc-val-input");
+        // 参照は毎回新しいが内容は同一の dataview（実際の PBI update と同じ）
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        const inputAfter = element.querySelector(".fc-val-input");
+        check("内容同一 update で入力 DOM が保持される（再構築なし）", inputBefore === inputAfter);
+    }
+
+    // --- destroy でタイマー残留しない ---
+    {
+        const { v } = makeVisual();
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        const cols = v.lastColsRef;
+        const oi = cols.findIndex(c => c.queryName === "T.組織名");
+        v.form.setState([{ columnIndex: oi, operator: "contains", value: "営業" }], {});
+        v.onFormChange();
+        check("適用後フォールバックタイマー存在", v.applyFallbackTimer !== null);
+        check("destroy が実装されている", typeof v.destroy === "function");
+        if (typeof v.destroy === "function") {
+            v.destroy();
+            check("destroy でタイマー解除", v.applyFallbackTimer === null);
+        } else {
+            check("destroy でタイマー解除", false, "destroy 未実装");
+        }
+    }
+}
+
 console.log(`\n===== 結果: pass=${pass} fail=${fail} =====`);
 process.exit(fail === 0 ? 0 : 1);

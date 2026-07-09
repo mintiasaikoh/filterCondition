@@ -38,6 +38,27 @@ export function parseNumericFilterValue(raw: string): number | null {
     return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * 演算子が列のデータ型と互換か。
+ * 型不一致の AdvancedFilter を発火すると Power BI が
+ * 「1つまたは複数のフィルターに問題があります」でビジュアルごと壊すため、
+ * 発火前に弾く（該当行は UI 警告）。型情報が無い列は従来通り許容。
+ */
+export function isOperatorCompatible(
+    col: powerbi.DataViewMetadataColumn,
+    op: FilterOp,
+): boolean {
+    const t = col?.type as {
+        numeric?: boolean; integer?: boolean; dateTime?: boolean; text?: boolean; bool?: boolean;
+    } | undefined;
+    if (!t) return true;
+    if (op === "gte" || op === "lte") {
+        return !!(t.numeric || t.integer);
+    }
+    // contains / notContains は数値・日付・bool に無効
+    return !(t.numeric || t.integer || t.dateTime || t.bool);
+}
+
 export function isConditionActive(c: FilterCondition): boolean {
     const v = c.value.trim();
     if (v === "") return false;

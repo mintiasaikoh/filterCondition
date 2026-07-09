@@ -116,6 +116,49 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
             f2 && JSON.stringify(f2.f[0].conditions));
     }
 
+    // 演算子と列型の不一致は発火しない（Power BI が filter 異常でビジュアルを壊すため）
+    {
+        const calls4 = [];
+        const host4 = { applyJsonFilter: (f, o, p, a) => calls4.push({ f, o, p, a }), persistProperties: () => {} };
+        const colsT = [
+            { queryName: "T.名称", displayName: "名称", type: { text: true } },
+            { queryName: "Sum(T.金額)", displayName: "金額", isMeasure: true, type: { numeric: true } },
+        ];
+        // テキスト列に gte → dropped（型不一致でクエリが壊れるのを防ぐ）
+        let r4 = emitAdvancedFilter(host4, colsT, [
+            { columnIndex: 0, operator: "gte", value: "1000" },
+        ], {}, "");
+        check("型: テキスト列に gte は dropped", r4.dropped.includes(0), JSON.stringify(r4.dropped));
+
+        // 数値列に gte → 正常発火
+        calls4.length = 0;
+        r4 = emitAdvancedFilter(host4, colsT, [
+            { columnIndex: 1, operator: "gte", value: "1000" },
+        ], {}, "");
+        const okF = calls4.find(c => c.p === "filter");
+        check("型: 数値列に gte は発火", r4.dropped.length === 0 && okF && okF.f.length === 1,
+            JSON.stringify(r4.dropped));
+
+        // 数値列に contains → dropped（Contains は数値に無効）
+        r4 = emitAdvancedFilter(host4, colsT, [
+            { columnIndex: 1, operator: "contains", value: "10" },
+        ], {}, "");
+        check("型: 数値列に contains は dropped", r4.dropped.includes(1), JSON.stringify(r4.dropped));
+
+        // テキスト列に contains → 正常発火
+        r4 = emitAdvancedFilter(host4, colsT, [
+            { columnIndex: 0, operator: "contains", value: "x" },
+        ], {}, "");
+        check("型: テキスト列に contains は発火", r4.dropped.length === 0, JSON.stringify(r4.dropped));
+
+        // 型情報が無い列は従来通り許容（後方互換）
+        const colsU = [{ queryName: "T.X", displayName: "X" }];
+        r4 = emitAdvancedFilter(host4, colsU, [
+            { columnIndex: 0, operator: "gte", value: "5" },
+        ], {}, "");
+        check("型: 型情報なしは許容", r4.dropped.length === 0, JSON.stringify(r4.dropped));
+    }
+
     // DAX メジャー列への条件は filter target を作れない → dropped として報告される
     {
         const calls3 = [];

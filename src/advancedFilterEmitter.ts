@@ -18,6 +18,7 @@ import {
     FilterCondition,
     FilterOp,
     isConditionActive,
+    isOperatorCompatible,
     buildFilterTarget,
     filterConditionSignature,
     parseNumericFilterValue,
@@ -163,11 +164,14 @@ function buildFilters(
         for (const c of condList) {
             const op = opMap(c.operator);
             if (!op) continue;
+            // 型不一致（テキスト列に gte / 数値列に contains 等）は発火しない。
+            // Power BI がフィルター異常でビジュアルを壊すため
+            if (!isOperatorCompatible(col, c.operator)) continue;
             const val = coerceValue(c.operator, c.value);
             advConds.push({ operator: op, value: val } as unknown as IAdvancedFilterCondition);
             sigItems.push(`${op}:${val}`);
         }
-        if (advConds.length === 0) continue;
+        if (advConds.length === 0) { dropped.push(ci); continue; }
 
         const logical: AdvancedFilterLogicalOperators =
             logicFor(columnLogic, ci) === "OR" ? "Or" : "And";

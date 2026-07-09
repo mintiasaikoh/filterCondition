@@ -21,7 +21,6 @@ import {
     isOperatorCompatible,
     buildFilterTarget,
     filterConditionSignature,
-    parseNumericFilterValue,
 } from "./filterEngine";
 
 export type GlobalLogic = "AND" | "OR";
@@ -138,16 +137,7 @@ function buildFilters(
     const opMap = (op: FilterOp): AdvancedFilterConditionOperators | null => {
         if (op === "contains")    return "Contains";
         if (op === "notContains") return "DoesNotContain";
-        if (op === "gte")         return "GreaterThanOrEqual";
-        if (op === "lte")         return "LessThanOrEqual";
         return null;
-    };
-
-    /** 数値演算子は正規化パース（全角/カンマ/通貨記号を吸収）。失敗時は文字列のまま渡す */
-    const coerceValue = (op: FilterOp, raw: string): string | number => {
-        if (op !== "gte" && op !== "lte") return raw;
-        const n = parseNumericFilterValue(raw);
-        return n !== null ? n : raw;
     };
 
     const filters: AdvancedFilter[] = [];
@@ -167,10 +157,10 @@ function buildFilters(
         for (const c of condList) {
             const op = opMap(c.operator);
             if (!op) continue;
-            // 型不一致（テキスト列に gte / 数値列に contains 等）は発火しない。
+            // 型不一致（数値/日付/bool 列に contains 等）は発火しない。
             // Power BI がフィルター異常でビジュアルを壊すため
             if (!isOperatorCompatible(col, c.operator)) continue;
-            const val = coerceValue(c.operator, c.value);
+            const val = c.value;
             advConds.push({ operator: op, value: val } as unknown as IAdvancedFilterCondition);
             sigItems.push(`${op}:${val}`);
         }
@@ -227,8 +217,7 @@ export function restoreFromAdvancedFilters(
     const opMapIn = (op: string): FilterOp | null => {
         if (op === "Contains")           return "contains";
         if (op === "DoesNotContain")     return "notContains";
-        if (op === "GreaterThanOrEqual") return "gte";
-        if (op === "LessThanOrEqual")    return "lte";
+        // GreaterThanOrEqual / LessThanOrEqual（旧 以上/以下）は廃止 → 復元対象外
         return null;
     };
 

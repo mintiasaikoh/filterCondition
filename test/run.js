@@ -62,15 +62,10 @@ section("A: filterEngine");
     t = buildFilterTarget({ queryName: "[MyMeasure]", isMeasure: true });
     check("DAX メジャーは null", t === null, JSON.stringify(t));
 
-    check("gte 非数値は inactive", isConditionActive({ columnIndex: 0, operator: "gte", value: "abc" }) === false);
-    check("gte 数値は active", isConditionActive({ columnIndex: 0, operator: "gte", value: "5" }) === true);
     check("contains 空白のみは inactive", isConditionActive({ columnIndex: 0, operator: "contains", value: "   " }) === false);
-
-    // 通貨・日本語入力の数値正規化
-    check("gte カンマ区切りは active", isConditionActive({ columnIndex: 0, operator: "gte", value: "1,000" }) === true);
-    check("gte 全角数字は active", isConditionActive({ columnIndex: 0, operator: "gte", value: "１０００" }) === true);
-    check("gte 通貨記号付きは active", isConditionActive({ columnIndex: 0, operator: "lte", value: "¥1,500" }) === true);
-    check("gte 全角マイナスは active", isConditionActive({ columnIndex: 0, operator: "gte", value: "－１００" }) === true);
+    check("contains 値ありは active", isConditionActive({ columnIndex: 0, operator: "contains", value: "営業" }) === true);
+    // 以上/以下は廃止（数値レンジは標準スライサーの領分）: 旧 op が残っていても発火しない
+    check("旧 gte 条件は active にならない", isConditionActive({ columnIndex: 0, operator: "gte", value: "5" }) === false);
 }
 
 // ---------------- B: emit / restore 往復 ----------------
@@ -88,7 +83,7 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
     const conds = [
         { columnIndex: 0, operator: "contains", value: "foo" },
         { columnIndex: 0, operator: "notContains", value: "bar" },
-        { columnIndex: 1, operator: "gte", value: "5" },
+        { columnIndex: 1, operator: "contains", value: "5" },
     ];
     const result = emitAdvancedFilter(host, cols, conds, { "0": "OR" }, "");
 
@@ -102,20 +97,6 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
     check("列ごとに 2 フィルタ", Array.isArray(filters) && filters.length === 2);
     const colA = filters.find(f => f.target.column === "A");
     check("col0 の logic=Or", colA && colA.logicalOperator === "Or", colA && colA.logicalOperator);
-    const colB = filters.find(f => f.target.column === "B");
-    check("gte 値が number 化", colB && typeof colB.conditions[0].value === "number");
-
-    // 通貨形式の入力が number に正規化されて emit される
-    {
-        const calls2 = [];
-        const host2 = { applyJsonFilter: (f, o, p, a) => calls2.push({ f, o, p, a }), persistProperties: () => {} };
-        emitAdvancedFilter(host2, cols, [{ columnIndex: 1, operator: "gte", value: "¥1,000" }], {}, "");
-        const f2 = calls2.find(c => c.p === "filter");
-        check("emit: ¥1,000 → 1000 (number)",
-            f2 && f2.f[0].conditions[0].value === 1000 && typeof f2.f[0].conditions[0].value === "number",
-            f2 && JSON.stringify(f2.f[0].conditions));
-    }
-
     // 演算子と列型の不一致は発火しない（Power BI が filter 異常でビジュアルを壊すため）
     {
         const calls4 = [];
@@ -124,23 +105,8 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
             { queryName: "T.名称", displayName: "名称", type: { text: true } },
             { queryName: "Sum(T.金額)", displayName: "金額", isMeasure: true, type: { numeric: true } },
         ];
-        // テキスト列に gte → dropped（型不一致でクエリが壊れるのを防ぐ）
-        let r4 = emitAdvancedFilter(host4, colsT, [
-            { columnIndex: 0, operator: "gte", value: "1000" },
-        ], {}, "");
-        check("型: テキスト列に gte は dropped", r4.dropped.includes(0), JSON.stringify(r4.dropped));
-
-        // 数値列に gte → 正常発火
-        calls4.length = 0;
-        r4 = emitAdvancedFilter(host4, colsT, [
-            { columnIndex: 1, operator: "gte", value: "1000" },
-        ], {}, "");
-        const okF = calls4.find(c => c.p === "filter");
-        check("型: 数値列に gte は発火", r4.dropped.length === 0 && okF && okF.f.length === 1,
-            JSON.stringify(r4.dropped));
-
         // 数値列に contains → dropped（Contains は数値に無効）
-        r4 = emitAdvancedFilter(host4, colsT, [
+        let r4 = emitAdvancedFilter(host4, colsT, [
             { columnIndex: 1, operator: "contains", value: "10" },
         ], {}, "");
         check("型: 数値列に contains は dropped", r4.dropped.includes(1), JSON.stringify(r4.dropped));
@@ -150,13 +116,6 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
             { columnIndex: 0, operator: "contains", value: "x" },
         ], {}, "");
         check("型: テキスト列に contains は発火", r4.dropped.length === 0, JSON.stringify(r4.dropped));
-
-        // 型情報が無い列は従来通り許容（後方互換）
-        const colsU = [{ queryName: "T.X", displayName: "X" }];
-        r4 = emitAdvancedFilter(host4, colsU, [
-            { columnIndex: 0, operator: "gte", value: "5" },
-        ], {}, "");
-        check("型: 型情報なしは許容", r4.dropped.length === 0, JSON.stringify(r4.dropped));
     }
 
     // DAX メジャー列への条件は filter target を作れない → dropped として報告される
@@ -169,7 +128,7 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
         ];
         const r = emitAdvancedFilter(host3, colsM, [
             { columnIndex: 0, operator: "contains", value: "x" },
-            { columnIndex: 1, operator: "gte", value: "1000" },
+            { columnIndex: 1, operator: "contains", value: "1000" },
         ], {}, "");
         check("メジャー条件は dropped に列挙", Array.isArray(r.dropped) && r.dropped.includes(1),
             JSON.stringify(r.dropped));
@@ -306,28 +265,6 @@ section("C: extractUniques カスケード");
     const again = v.extractUniques(dv, cols, [{ columnIndex: orgIdx, operator: "contains", value: "営業" }]);
     check("キャッシュヒット（同一参照）", again === uniq);
 
-    // 通貨形式の gte でも数値候補列のカスケードが効く
-    {
-        const { v: v2 } = makeVisual();
-        const dvNum = {
-            metadata: { columns: [] },
-            categorical: {
-                categories: [
-                    { source: { queryName: "T.区分", displayName: "区分" }, values: ["A", "B", "C"] },
-                    { source: { queryName: "T.単価", displayName: "単価" }, values: [500, 1500, 2000] },
-                ],
-            },
-        };
-        const cols2 = v2.resolveColumns(dvNum);
-        const kubunIdx = cols2.findIndex(c => c.queryName === "T.区分");
-        const tankaIdx = cols2.findIndex(c => c.queryName === "T.単価");
-        const uniq2 = v2.extractUniques(dvNum, cols2, [
-            { columnIndex: tankaIdx, operator: "gte", value: "1,000" },
-        ]);
-        check("カスケード: 単価 gte 1,000（カンマ）で区分が B,C に減る",
-            JSON.stringify(uniq2[kubunIdx].slice().sort()) === JSON.stringify(["B", "C"]),
-            JSON.stringify(uniq2[kubunIdx]));
-    }
 }
 
 // ---------------- D: update フロー ----------------
@@ -412,8 +349,8 @@ section("E: 復元時の selfFilter 同期");
             conditions: [{ operator: "Contains", value: "営業" }],
         },
         {
-            filterType: 0, target: { table: "T", column: "金額" }, logicalOperator: "And",
-            conditions: [{ operator: "GreaterThanOrEqual", value: 3 }],
+            filterType: 0, target: { table: "T", column: "部署" }, logicalOperator: "And",
+            conditions: [{ operator: "Contains", value: "一" }],
         },
     ];
     v.update({ dataViews: [makeDv(undefined)], jsonFilters: jf, type: DATA });
@@ -484,10 +421,23 @@ section("H: フィルタ不能列（メジャー）の警告表示");
     v.update({ dataViews: [dvM], jsonFilters: [], type: DATA });
     const cols = v.lastColsRef;
     const mIdx = cols.findIndex(c => c.queryName === "T.実績合計");
-    v.form.setState([{ columnIndex: mIdx, operator: "gte", value: "1000" }], {});
+    v.form.setState([{ columnIndex: mIdx, operator: "contains", value: "1000" }], {});
     v.onFormChange();
     check("メジャー条件の行に警告クラスが付く", !!element.querySelector(".fc-row-invalid"),
         element.querySelector(".fc-row") ? element.querySelector(".fc-row").className : "行なし");
+}
+
+// ---------------- I: 演算子は 含む/含まない のみ ----------------
+section("I: 演算子セット（以上/以下は廃止）");
+{
+    const DATA = 2;
+    const { v, element } = makeVisual();
+    v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+    const opts = element.querySelectorAll(".fc-op-sel option");
+    const labels = Array.from(opts).map(o => o.textContent);
+    check("演算子は 2 つだけ（含む/含まない）",
+        labels.length === 2 && labels.includes("含む") && labels.includes("含まない"),
+        JSON.stringify(labels));
 }
 
 // ---------------- G: UI ランタイム堅牢性 ----------------

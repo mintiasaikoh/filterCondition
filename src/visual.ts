@@ -12,7 +12,7 @@ import VisualUpdateType = powerbi.VisualUpdateType;
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 
 import { ConditionForm } from "./conditionForm";
-import { FilterCondition, FilterOp, isConditionActive, parseNumericFilterValue } from "./filterEngine";
+import { FilterCondition, FilterOp, isConditionActive } from "./filterEngine";
 import {
     emitAdvancedFilter,
     restoreFromAdvancedFilters,
@@ -286,7 +286,7 @@ export class Visual implements IVisual {
                         const op = r.operator;
                         const val = String(r.value ?? "");
                         if (!Number.isFinite(ci)) continue;
-                        if (op !== "contains" && op !== "notContains" && op !== "gte" && op !== "lte") continue;
+                        if (op !== "contains" && op !== "notContains") continue;
                         conds.push({ columnIndex: ci, operator: op, value: val });
                     }
                 }
@@ -475,14 +475,8 @@ export class Visual implements IVisual {
     /** タプル値が条件 (op, value) を満たすか（カスケード用、emit と同じ意味論） */
     private evalCond(tv: powerbi.PrimitiveValue, op: FilterOp, value: string): boolean {
         if (tv == null) return false;
-        if (op === "contains" || op === "notContains") {
-            const hit = String(tv).toLowerCase().includes(value.toLowerCase());
-            return op === "contains" ? hit : !hit;
-        }
-        const n = Number(tv);
-        const nv = parseNumericFilterValue(value);
-        if (!Number.isFinite(n) || nv === null) return false;
-        return op === "gte" ? n >= nv : n <= nv;
+        const hit = String(tv).toLowerCase().includes(value.toLowerCase());
+        return op === "contains" ? hit : !hit;
     }
 
     private applyAppearance(): void {

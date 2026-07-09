@@ -7,7 +7,10 @@ import { IFilterColumnTarget } from "powerbi-models";
 // 共有型
 // ==========================================================
 
-export type FilterOp = "contains" | "notContains" | "gte" | "lte";
+// 以上/以下（gte/lte）は廃止。数値レンジは標準スライサーの領分:
+// 集計フィールドへの selfFilter を Power BI が拒否しビジュアルが壊れる問題、
+// および数値比較 UX は標準スライサーが優れているため
+export type FilterOp = "contains" | "notContains";
 
 export interface FilterCondition {
     columnIndex: number;
@@ -20,25 +23,6 @@ export interface FilterCondition {
 // ==========================================================
 
 /**
- * 数値入力の正規化パース。通貨列向けの日本語入力を許容する:
- * 全角数字・記号 → 半角、カンマ区切り・通貨記号（¥/￥/$/＄）・空白を除去。
- * 数値にならなければ null。
- */
-export function parseNumericFilterValue(raw: string): number | null {
-    let s = raw.trim();
-    if (s === "") return null;
-    s = s
-        .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
-        .replace(/[．]/g, ".")
-        .replace(/[－ー−]/g, "-")
-        .replace(/[，、]/g, ",")
-        .replace(/[¥￥$＄\s,]/g, "");
-    if (s === "") return null;
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-}
-
-/**
  * 演算子が列のデータ型と互換か。
  * 型不一致の AdvancedFilter を発火すると Power BI が
  * 「1つまたは複数のフィルターに問題があります」でビジュアルごと壊すため、
@@ -46,15 +30,12 @@ export function parseNumericFilterValue(raw: string): number | null {
  */
 export function isOperatorCompatible(
     col: powerbi.DataViewMetadataColumn,
-    op: FilterOp,
+    _op: FilterOp,
 ): boolean {
     const t = col?.type as {
         numeric?: boolean; integer?: boolean; dateTime?: boolean; text?: boolean; bool?: boolean;
     } | undefined;
     if (!t) return true;
-    if (op === "gte" || op === "lte") {
-        return !!(t.numeric || t.integer);
-    }
     // contains / notContains は数値・日付・bool に無効
     return !(t.numeric || t.integer || t.dateTime || t.bool);
 }
@@ -62,11 +43,8 @@ export function isOperatorCompatible(
 export function isConditionActive(c: FilterCondition): boolean {
     const v = c.value.trim();
     if (v === "") return false;
-    // gte/lte は数値のみ有効（非数値は黙ってマッチ無しになるので発火させない）。
-    // カンマ・全角・通貨記号は parseNumericFilterValue が吸収する
-    if (c.operator === "gte" || c.operator === "lte") {
-        return parseNumericFilterValue(v) !== null;
-    }
+    // 廃止済み演算子（旧永続化 state の gte/lte 等）は発火させない
+    if (c.operator !== "contains" && c.operator !== "notContains") return false;
     return true;
 }
 

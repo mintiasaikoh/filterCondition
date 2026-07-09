@@ -25,6 +25,11 @@
                 "logic":            { "type": { "text": true } }
             }
         },
+        "behavior": {
+            "properties": {
+                "selfFilterEnabled": { "type": { "bool": true } }
+            }
+        },
         "appearance": {
             "properties": {
                 "fontFamily":     { "type": { "formatting": { "fontFamily": true } } },

@@ -38,7 +38,7 @@ function section(t) { console.log(`\n== ${t} ==`); }
 
 const build = (p) => path.join(__dirname, "build", "src", p);
 const { buildFilterTarget, isConditionActive } = require(build("filterEngine.js"));
-const { emitAdvancedFilter, restoreFromAdvancedFilters } = require(build("advancedFilterEmitter.js"));
+const { emitAdvancedFilter, restoreFromAdvancedFilters, syncSelfFilter } = require(build("advancedFilterEmitter.js"));
 const { Visual } = require(build("visual.js"));
 
 // ---------------- A: filterEngine ----------------
@@ -195,6 +195,35 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
     check("クリアで emitted", cleared.emitted === true && cleared.sig === "");
     check("main remove", calls.some(c => c.prop === "filter" && c.action === 1 && c.f === null));
     check("selfFilter remove", calls.some(c => c.prop === "selfFilter" && c.action === 1 && c.f === null));
+
+    // 復旧経路: 履歴なし（lastSig=""）でも空適用で必ず remove を発火する
+    // （壊れたフィルタがレポートに永続化されているときの唯一の復旧手段）
+    calls.length = 0;
+    emitAdvancedFilter(host, cols, [], {}, "");
+    check("復旧: 履歴なし空適用でも main remove",
+        calls.some(c => c.prop === "filter" && c.f === null && c.action === 1), JSON.stringify(calls));
+    check("復旧: 履歴なし空適用でも selfFilter remove",
+        calls.some(c => c.prop === "selfFilter" && c.f === null && c.action === 1), JSON.stringify(calls));
+
+    // selfFilterEnabled=false（既定 OFF の安全動作）: main は通常発火、selfFilter は常に remove
+    calls.length = 0;
+    emitAdvancedFilter(host, cols, conds, { "0": "OR" }, "", new Set([0]), false);
+    check("selfFilter 無効: main は発火", calls.some(c => c.prop === "filter" && Array.isArray(c.f)));
+    check("selfFilter 無効: selfFilter は remove",
+        calls.some(c => c.prop === "selfFilter" && c.f === null && c.action === 1),
+        JSON.stringify(calls.filter(c => c.prop === "selfFilter")));
+
+    // syncSelfFilter のトグル両面（機能はトグル ON で温存されている）
+    calls.length = 0;
+    syncSelfFilter(host, cols, conds, { "0": "OR" }, new Set([0]), true);
+    check("sync 有効: 列側条件を merge",
+        calls.some(c => c.prop === "selfFilter" && Array.isArray(c.f) && c.f.length === 1 && c.f[0].target.column === "B"),
+        JSON.stringify(calls));
+    calls.length = 0;
+    syncSelfFilter(host, cols, conds, { "0": "OR" }, new Set([0]), false);
+    check("sync 無効: remove",
+        calls.some(c => c.prop === "selfFilter" && c.f === null && c.action === 1),
+        JSON.stringify(calls));
 
     // --- selfFilter の候補列条件除外（自列候補を殺さないため） ---
     // col0 が候補列の場合: main は全条件、selfFilter は列(メジャー)側の条件のみ
@@ -390,9 +419,10 @@ section("E: 復元時の selfFilter 同期");
     v.update({ dataViews: [makeDv(undefined)], jsonFilters: jf, type: DATA });
     check("復元: UI に 2 条件", v.form.getConditions().length === 2,
         JSON.stringify(v.form.getConditions()));
-    const selfMerge = calls.find(c => c.prop === "selfFilter" && Array.isArray(c.f));
-    check("復元: selfFilter 同期発火（列側 金額 のみ）",
-        selfMerge && selfMerge.f.length === 1 && selfMerge.f[0].target.column === "金額",
+    // selfFilter は既定 OFF（実験トグル）→ 復元時は残留除去の remove が発火する
+    check("復元: selfFilter は既定で remove（残留 selfFilter の自動除去）",
+        calls.some(c => c.prop === "selfFilter" && c.f === null && c.action === 1)
+        && !calls.some(c => c.prop === "selfFilter" && Array.isArray(c.f)),
         JSON.stringify(calls.filter(c => c.prop === "selfFilter")));
     check("復元: main filter は再発火しない", !calls.some(c => c.prop === "filter"),
         JSON.stringify(calls.filter(c => c.prop === "filter")));

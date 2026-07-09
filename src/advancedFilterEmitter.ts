@@ -55,12 +55,14 @@ export function emitAdvancedFilter(
     columnLogic: ColumnLogic,
     lastSig: string,
     candidateCols?: Set<number>,
+    selfFilterEnabled = true,
 ): EmitResult {
     const active = conds.filter(isConditionActive);
 
-    // 条件なし → 既発火があれば remove（selfFilter も揃えて除去）
+    // 条件なし → 無条件で両方 remove。
+    // lastSig による省略はしない: 壊れたフィルタがレポートに永続化されている場合、
+    // 履歴の無い新セッションの「クリア」が唯一の復旧手段になるため。
     if (active.length === 0) {
-        if (lastSig === "") return { sig: "", emitted: false, dropped: [] };
         host.applyJsonFilter(null, "general", "filter", FilterAction.remove);
         applySelfFilter(host, null);
         return { sig: "", emitted: true, dropped: [] };
@@ -69,7 +71,6 @@ export function emitAdvancedFilter(
     const { filters, selfFilters, sigParts, dropped } = buildFilters(cols, active, columnLogic, candidateCols);
 
     if (filters.length === 0) {
-        if (lastSig === "") return { sig: "", emitted: false, dropped };
         host.applyJsonFilter(null, "general", "filter", FilterAction.remove);
         applySelfFilter(host, null);
         return { sig: "", emitted: true, dropped };
@@ -79,11 +80,12 @@ export function emitAdvancedFilter(
     if (sig === lastSig) return { sig, emitted: false, dropped };
 
     host.applyJsonFilter(filters, "general", "filter", FilterAction.merge);
-    // selfFilter: 列(values role)側の条件だけを自ビジュアルの dataview に適用
-    // （ネイティブスライサーの検索ボックスと同じ仕組み）。候補列の条件は
-    // クライアント側カスケードが自列除外付きで処理するため含めない。
-    // 空なら remove（サーバー側では絞らない）。他ビジュアルには影響しない。
-    applySelfFilter(host, selfFilters);
+    // selfFilter: 列(values role)側の条件を自ビジュアルの dataview に適用して
+    // 候補をサーバー側でカスケードさせる実験的機能（Format Pane トグル、既定 OFF）。
+    // 集計フィールドを target にした selfFilter を Power BI が拒否し
+    // 「フィルターに問題があります」でビジュアルが壊れる事例があるため既定無効。
+    // 無効時は remove を送り、過去バージョンの残留 selfFilter も掃除する。
+    applySelfFilter(host, selfFilterEnabled ? selfFilters : null);
     return { sig, emitted: true, dropped };
 }
 
@@ -99,9 +101,10 @@ export function syncSelfFilter(
     conds: FilterCondition[],
     columnLogic: ColumnLogic,
     candidateCols?: Set<number>,
+    selfFilterEnabled = true,
 ): void {
     const active = conds.filter(isConditionActive);
-    if (active.length === 0) {
+    if (!selfFilterEnabled || active.length === 0) {
         applySelfFilter(host, null);
         return;
     }

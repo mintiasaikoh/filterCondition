@@ -45,7 +45,22 @@ class AppearanceCard extends FormattingSettingsCard {
     ];
 }
 
+class BehaviorCard extends FormattingSettingsCard {
+    name = "behavior";
+    displayName = "動作";
+
+    selfFilterEnabled = new formattingSettings.ToggleSwitch({
+        name: "selfFilterEnabled",
+        displayName: "候補のサーバー連動（実験的）",
+        description: "「列」側の条件でも候補を絞り込む。環境によってはフィルター異常でビジュアルが壊れるため既定 OFF",
+        value: false,
+    });
+
+    slices: FormattingSettingsSlice[] = [this.selfFilterEnabled];
+}
+
 export class VisualFormattingSettingsModel extends FormattingSettingsModel {
     appearanceCard = new AppearanceCard();
-    cards = [this.appearanceCard];
+    behaviorCard = new BehaviorCard();
+    cards = [this.appearanceCard, this.behaviorCard];
 }

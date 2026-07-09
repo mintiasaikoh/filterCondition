@@ -160,7 +160,8 @@ export class Visual implements IVisual {
         const columnLogic = this.form.getColumnLogic();
 
         const result = emitAdvancedFilter(
-            this.host, cols, conds, columnLogic, this.lastFilterSig, this.candidateColIdx(cols));
+            this.host, cols, conds, columnLogic, this.lastFilterSig,
+            this.candidateColIdx(cols), this.selfFilterEnabled());
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
@@ -213,10 +214,16 @@ export class Visual implements IVisual {
         const conds = this.form.getConditions();
         const columnLogic = this.form.getColumnLogic();
         const result = emitAdvancedFilter(
-            this.host, cols, conds, columnLogic, this.lastFilterSig, this.candidateColIdx(cols));
+            this.host, cols, conds, columnLogic, this.lastFilterSig,
+            this.candidateColIdx(cols), this.selfFilterEnabled());
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
+    }
+
+    /** selfFilter（候補のサーバー連動）トグル。既定 OFF（安全側） */
+    private selfFilterEnabled(): boolean {
+        return this.formattingSettings?.behaviorCard?.selfFilterEnabled?.value === true;
     }
 
     /** 列リストの内容が前回と同一なら前回の配列参照を返す（DOM 再構築抑止） */
@@ -347,7 +354,7 @@ export class Visual implements IVisual {
                 this.appliedConds = [];
                 this.form.resetToDefault();
                 // 外部クリアで main が消えても selfFilter は残留しうるので揃えて除去
-                syncSelfFilter(this.host, cols, [], {});
+                syncSelfFilter(this.host, cols, [], {}, undefined, this.selfFilterEnabled());
             }
             return;
         }
@@ -363,8 +370,10 @@ export class Visual implements IVisual {
         this.lastFilterSig = restored.sig;
         this.appliedConds = restored.conditions;
         // レポート再オープン / ページ再訪では selfFilter は誰も発火していないため、
-        // サーバー側候補カスケードを復元状態に同期する（main は既に filter 層にあり再発火しない）
-        syncSelfFilter(this.host, cols, restored.conditions, restored.columnLogic, this.candidateColIdx(cols));
+        // サーバー側候補カスケードを復元状態に同期する（main は既に filter 層にあり再発火しない）。
+        // トグル OFF（既定）では remove が送られ、過去バージョンの残留 selfFilter を掃除する
+        syncSelfFilter(this.host, cols, restored.conditions, restored.columnLogic,
+            this.candidateColIdx(cols), this.selfFilterEnabled());
     }
 
     // ==========================================================

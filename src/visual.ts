@@ -12,7 +12,7 @@ import VisualUpdateType = powerbi.VisualUpdateType;
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 
 import { ConditionForm } from "./conditionForm";
-import { FilterCondition, FilterOp, isConditionActive } from "./filterEngine";
+import { FilterCondition, FilterOp, isConditionActive, parseNumericFilterValue } from "./filterEngine";
 import {
     emitAdvancedFilter,
     restoreFromAdvancedFilters,
@@ -469,8 +469,8 @@ export class Visual implements IVisual {
             return op === "contains" ? hit : !hit;
         }
         const n = Number(tv);
-        const nv = Number(value);
-        if (!Number.isFinite(n) || !Number.isFinite(nv)) return false;
+        const nv = parseNumericFilterValue(value);
+        if (!Number.isFinite(n) || nv === null) return false;
         return op === "gte" ? n >= nv : n <= nv;
     }
 

@@ -65,6 +65,12 @@ section("A: filterEngine");
     check("gte 非数値は inactive", isConditionActive({ columnIndex: 0, operator: "gte", value: "abc" }) === false);
     check("gte 数値は active", isConditionActive({ columnIndex: 0, operator: "gte", value: "5" }) === true);
     check("contains 空白のみは inactive", isConditionActive({ columnIndex: 0, operator: "contains", value: "   " }) === false);
+
+    // 通貨・日本語入力の数値正規化
+    check("gte カンマ区切りは active", isConditionActive({ columnIndex: 0, operator: "gte", value: "1,000" }) === true);
+    check("gte 全角数字は active", isConditionActive({ columnIndex: 0, operator: "gte", value: "１０００" }) === true);
+    check("gte 通貨記号付きは active", isConditionActive({ columnIndex: 0, operator: "lte", value: "¥1,500" }) === true);
+    check("gte 全角マイナスは active", isConditionActive({ columnIndex: 0, operator: "gte", value: "－１００" }) === true);
 }
 
 // ---------------- B: emit / restore 往復 ----------------
@@ -98,6 +104,17 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
     check("col0 の logic=Or", colA && colA.logicalOperator === "Or", colA && colA.logicalOperator);
     const colB = filters.find(f => f.target.column === "B");
     check("gte 値が number 化", colB && typeof colB.conditions[0].value === "number");
+
+    // 通貨形式の入力が number に正規化されて emit される
+    {
+        const calls2 = [];
+        const host2 = { applyJsonFilter: (f, o, p, a) => calls2.push({ f, o, p, a }), persistProperties: () => {} };
+        emitAdvancedFilter(host2, cols, [{ columnIndex: 1, operator: "gte", value: "¥1,000" }], {}, "");
+        const f2 = calls2.find(c => c.p === "filter");
+        check("emit: ¥1,000 → 1000 (number)",
+            f2 && f2.f[0].conditions[0].value === 1000 && typeof f2.f[0].conditions[0].value === "number",
+            f2 && JSON.stringify(f2.f[0].conditions));
+    }
 
     // echo: filter + selfFilter が両方 jsonFilters に載って戻るケース
     const echoed = [...filters, ...filters].map(f => JSON.parse(JSON.stringify(f)));
@@ -197,6 +214,29 @@ section("C: extractUniques カスケード");
 
     const again = v.extractUniques(dv, cols, [{ columnIndex: orgIdx, operator: "contains", value: "営業" }]);
     check("キャッシュヒット（同一参照）", again === uniq);
+
+    // 通貨形式の gte でも数値候補列のカスケードが効く
+    {
+        const { v: v2 } = makeVisual();
+        const dvNum = {
+            metadata: { columns: [] },
+            categorical: {
+                categories: [
+                    { source: { queryName: "T.区分", displayName: "区分" }, values: ["A", "B", "C"] },
+                    { source: { queryName: "T.単価", displayName: "単価" }, values: [500, 1500, 2000] },
+                ],
+            },
+        };
+        const cols2 = v2.resolveColumns(dvNum);
+        const kubunIdx = cols2.findIndex(c => c.queryName === "T.区分");
+        const tankaIdx = cols2.findIndex(c => c.queryName === "T.単価");
+        const uniq2 = v2.extractUniques(dvNum, cols2, [
+            { columnIndex: tankaIdx, operator: "gte", value: "1,000" },
+        ]);
+        check("カスケード: 単価 gte 1,000（カンマ）で区分が B,C に減る",
+            JSON.stringify(uniq2[kubunIdx].slice().sort()) === JSON.stringify(["B", "C"]),
+            JSON.stringify(uniq2[kubunIdx]));
+    }
 }
 
 // ---------------- D: update フロー ----------------

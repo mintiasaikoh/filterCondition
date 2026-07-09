@@ -20,6 +20,7 @@ import {
     isConditionActive,
     buildFilterTarget,
     filterConditionSignature,
+    parseNumericFilterValue,
 } from "./filterEngine";
 
 export type GlobalLogic = "AND" | "OR";
@@ -134,11 +135,11 @@ function buildFilters(
         return null;
     };
 
-    /** 数値・日付演算子は数値化を試みる。失敗時は文字列のまま渡す */
+    /** 数値演算子は正規化パース（全角/カンマ/通貨記号を吸収）。失敗時は文字列のまま渡す */
     const coerceValue = (op: FilterOp, raw: string): string | number => {
         if (op !== "gte" && op !== "lte") return raw;
-        const n = Number(raw);
-        return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
+        const n = parseNumericFilterValue(raw);
+        return n !== null ? n : raw;
     };
 
     const filters: AdvancedFilter[] = [];

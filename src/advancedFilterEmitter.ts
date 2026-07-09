@@ -31,6 +31,8 @@ const SIG_PREFIX = "ADV|";
 export interface EmitResult {
     sig: string;       // 発火した signature（""=発火せず / remove 時）
     emitted: boolean;  // 実際に applyJsonFilter を呼んだか
+    /** filter target を作れず捨てられた条件の col index（DAX メジャー等）。UI 警告用 */
+    dropped: number[];
 }
 
 const logicFor = (logic: ColumnLogic, ci: number): GlobalLogic =>
@@ -57,23 +59,23 @@ export function emitAdvancedFilter(
 
     // 条件なし → 既発火があれば remove（selfFilter も揃えて除去）
     if (active.length === 0) {
-        if (lastSig === "") return { sig: "", emitted: false };
+        if (lastSig === "") return { sig: "", emitted: false, dropped: [] };
         host.applyJsonFilter(null, "general", "filter", FilterAction.remove);
         applySelfFilter(host, null);
-        return { sig: "", emitted: true };
+        return { sig: "", emitted: true, dropped: [] };
     }
 
-    const { filters, selfFilters, sigParts } = buildFilters(cols, active, columnLogic, candidateCols);
+    const { filters, selfFilters, sigParts, dropped } = buildFilters(cols, active, columnLogic, candidateCols);
 
     if (filters.length === 0) {
-        if (lastSig === "") return { sig: "", emitted: false };
+        if (lastSig === "") return { sig: "", emitted: false, dropped };
         host.applyJsonFilter(null, "general", "filter", FilterAction.remove);
         applySelfFilter(host, null);
-        return { sig: "", emitted: true };
+        return { sig: "", emitted: true, dropped };
     }
 
     const sig = SIG_PREFIX + sigParts.slice().sort().join("|");
-    if (sig === lastSig) return { sig, emitted: false };
+    if (sig === lastSig) return { sig, emitted: false, dropped };
 
     host.applyJsonFilter(filters, "general", "filter", FilterAction.merge);
     // selfFilter: 列(values role)側の条件だけを自ビジュアルの dataview に適用
@@ -81,7 +83,7 @@ export function emitAdvancedFilter(
     // クライアント側カスケードが自列除外付きで処理するため含めない。
     // 空なら remove（サーバー側では絞らない）。他ビジュアルには影響しない。
     applySelfFilter(host, selfFilters);
-    return { sig, emitted: true };
+    return { sig, emitted: true, dropped };
 }
 
 /**
@@ -110,6 +112,8 @@ interface BuiltFilters {
     filters: AdvancedFilter[];
     selfFilters: AdvancedFilter[];
     sigParts: string[];
+    /** filter target を作れなかった col index（DAX メジャー等） */
+    dropped: number[];
 }
 
 /** active 条件から列ごとの AdvancedFilter 群と signature 部品を構築 */
@@ -145,12 +149,13 @@ function buildFilters(
     const filters: AdvancedFilter[] = [];
     const selfFilters: AdvancedFilter[] = [];
     const sigParts: string[] = [];
+    const dropped: number[] = [];
 
     for (const [ci, condList] of byCol) {
         const col = cols[ci];
-        if (!col) continue;
+        if (!col) { dropped.push(ci); continue; }
         const target = buildFilterTarget(col);
-        if (!target) continue;
+        if (!target) { dropped.push(ci); continue; }
 
         const advConds: IAdvancedFilterCondition[] = [];
         const sigItems: string[] = [];
@@ -173,7 +178,7 @@ function buildFilters(
         sigParts.push(filterConditionSignature(target, logical, sigItems));
     }
 
-    return { filters, selfFilters, sigParts };
+    return { filters, selfFilters, sigParts, dropped };
 }
 
 /** selfFilter の適用/除去。未対応ホストで main filter を巻き込まないよう隔離 */

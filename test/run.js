@@ -116,6 +116,25 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
             f2 && JSON.stringify(f2.f[0].conditions));
     }
 
+    // DAX メジャー列への条件は filter target を作れない → dropped として報告される
+    {
+        const calls3 = [];
+        const host3 = { applyJsonFilter: (f, o, p, a) => calls3.push({ f, o, p, a }), persistProperties: () => {} };
+        const colsM = [
+            { queryName: "T.A", displayName: "A" },
+            { queryName: "T.実績合計", displayName: "実績合計", isMeasure: true }, // agg ラッパー無しのメジャー
+        ];
+        const r = emitAdvancedFilter(host3, colsM, [
+            { columnIndex: 0, operator: "contains", value: "x" },
+            { columnIndex: 1, operator: "gte", value: "1000" },
+        ], {}, "");
+        check("メジャー条件は dropped に列挙", Array.isArray(r.dropped) && r.dropped.includes(1),
+            JSON.stringify(r.dropped));
+        const fm = calls3.find(c => c.p === "filter");
+        check("メジャー条件は filter に含まれない", fm && fm.f.length === 1 && fm.f[0].target.column === "A",
+            fm && JSON.stringify(fm.f.map(x => x.target.column)));
+    }
+
     // echo: filter + selfFilter が両方 jsonFilters に載って戻るケース
     const echoed = [...filters, ...filters].map(f => JSON.parse(JSON.stringify(f)));
     echoed.forEach(f => { f.filterType = 0; }); // FilterType.Advanced = 0
@@ -370,6 +389,32 @@ section("F: 未適用条件はカスケードに使わない");
     const uniq2 = v.lastUniquesRef;
     check("適用後はカスケードが効く（部署 2 件）", uniq2[depIdx].length === 2,
         JSON.stringify(uniq2[depIdx]));
+}
+
+// ---------------- H: フィルタ不能列の可視化 ----------------
+section("H: フィルタ不能列（メジャー）の警告表示");
+{
+    const DATA = 2;
+    const { v, element } = makeVisual();
+    // 「列」に DAX メジャー（agg ラッパー無し・isMeasure）が入っているケース
+    const dvM = {
+        metadata: { columns: [] },
+        categorical: {
+            categories: [
+                { source: { queryName: "T.組織名", displayName: "組織名" }, values: ["営業", "開発"] },
+            ],
+            values: [
+                { source: { queryName: "T.実績合計", displayName: "実績合計", isMeasure: true }, values: [1, 2] },
+            ],
+        },
+    };
+    v.update({ dataViews: [dvM], jsonFilters: [], type: DATA });
+    const cols = v.lastColsRef;
+    const mIdx = cols.findIndex(c => c.queryName === "T.実績合計");
+    v.form.setState([{ columnIndex: mIdx, operator: "gte", value: "1000" }], {});
+    v.onFormChange();
+    check("メジャー条件の行に警告クラスが付く", !!element.querySelector(".fc-row-invalid"),
+        element.querySelector(".fc-row") ? element.querySelector(".fc-row").className : "行なし");
 }
 
 // ---------------- G: UI ランタイム堅牢性 ----------------

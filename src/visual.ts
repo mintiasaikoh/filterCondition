@@ -164,6 +164,8 @@ export class Visual implements IVisual {
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
+        // filter target を作れなかった列（メジャー等）を行警告で可視化
+        this.form.setUnfilterable(new Set(result.dropped));
         this.appliedConds = conds;
         this.persist(conds, columnLogic);
         // 自分の persist は外部変化として誤検知しないよう sig を更新＋反映待ちフラグ。

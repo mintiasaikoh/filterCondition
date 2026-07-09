@@ -29,6 +29,8 @@ export class ConditionForm {
     private uniquesPerCol: string[][] = [];
     private datalistHost: HTMLElement;
     private initialized = false;
+    /** filter target を作れない列（DAX メジャー等）。該当行に警告表示 */
+    private unfilterable = new Set<number>();
 
     constructor(container: HTMLElement, private cb: ConditionFormCallbacks) {
         this.root = document.createElement("div");
@@ -110,6 +112,12 @@ export class ConditionForm {
     /** 入力（適用済みかどうか問わず）が残っているか */
     public hasAnyInput(): boolean {
         return this.conditions.some(c => c.value.trim() !== "");
+    }
+
+    /** フィルタ不能列（メジャー等）を設定し、該当行に警告表示する */
+    public setUnfilterable(colIdxSet: Set<number>): void {
+        this.unfilterable = colIdxSet;
+        this.render();
     }
 
     setColumns(cols: powerbi.DataViewMetadataColumn[], uniquesPerCol: string[][] = []): void {
@@ -269,6 +277,10 @@ export class ConditionForm {
     private makeRow(cond: FilterCondition, idx: number): HTMLElement {
         const row = document.createElement("div");
         row.className = "fc-row";
+        if (this.unfilterable.has(cond.columnIndex)) {
+            row.classList.add("fc-row-invalid");
+            row.title = "この列には条件フィルターを適用できません（メジャー / 集計式のため）。モデル上の元の列を使ってください";
+        }
 
         // 列セレクタ
         const colSel = document.createElement("select");

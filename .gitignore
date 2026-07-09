@@ -4,3 +4,4 @@ webpack.statistics.prod.html
 *.log
 .DS_Store
 test/build/
+dist/package.json

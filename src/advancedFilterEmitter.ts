@@ -160,7 +160,9 @@ function buildFilters(
             // 型不一致（数値/日付/bool 列に contains 等）は発火しない。
             // Power BI がフィルター異常でビジュアルを壊すため
             if (!isOperatorCompatible(col, c.operator)) continue;
-            const val = c.value;
+            // 前後の空白（全角スペース・改行含む）はコピペ由来の事故が多いのでトリム。
+            // 内側のスペースは検索語の一部として保持
+            const val = c.value.trim();
             advConds.push({ operator: op, value: val } as unknown as IAdvancedFilterCondition);
             sigItems.push(`${op}:${val}`);
         }

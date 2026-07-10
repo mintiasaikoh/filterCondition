@@ -97,6 +97,35 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
     check("列ごとに 2 フィルタ", Array.isArray(filters) && filters.length === 2);
     const colA = filters.find(f => f.target.column === "A");
     check("col0 の logic=Or", colA && colA.logicalOperator === "Or", colA && colA.logicalOperator);
+    // 入力値のトリム正規化（前後の空白・全角スペース・改行はフィルタ値に含めない）
+    {
+        const calls5 = [];
+        const host5 = { applyJsonFilter: (f, o, p, a) => calls5.push({ f, o, p, a }), persistProperties: () => {} };
+        emitAdvancedFilter(host5, cols, [
+            { columnIndex: 0, operator: "contains", value: "  営業  " },
+        ], {}, "");
+        let f5 = calls5.find(c => c.p === "filter");
+        check("emit: 前後スペースはトリムされる", f5 && f5.f[0].conditions[0].value === "営業",
+            f5 && JSON.stringify(f5.f[0].conditions));
+
+        calls5.length = 0;
+        emitAdvancedFilter(host5, cols, [
+            { columnIndex: 0, operator: "contains", value: "　営業　\n" },
+        ], {}, "");
+        f5 = calls5.find(c => c.p === "filter");
+        check("emit: 全角スペース・改行もトリム", f5 && f5.f[0].conditions[0].value === "営業",
+            f5 && JSON.stringify(f5.f[0].conditions));
+
+        // 内側のスペースは保持（検索語を壊さない）
+        calls5.length = 0;
+        emitAdvancedFilter(host5, cols, [
+            { columnIndex: 0, operator: "contains", value: " 東京 支店 " },
+        ], {}, "");
+        f5 = calls5.find(c => c.p === "filter");
+        check("emit: 内側のスペースは保持", f5 && f5.f[0].conditions[0].value === "東京 支店",
+            f5 && JSON.stringify(f5.f[0].conditions));
+    }
+
     // 演算子と列型の不一致は発火しない（Power BI が filter 異常でビジュアルを壊すため）
     {
         const calls4 = [];
@@ -265,6 +294,11 @@ section("C: extractUniques カスケード");
     const again = v.extractUniques(dv, cols, [{ columnIndex: orgIdx, operator: "contains", value: "営業" }]);
     check("キャッシュヒット（同一参照）", again === uniq);
 
+    // 前後スペース付きの条件でもカスケードが効く（トリム正規化）
+    const uniqSp = v.extractUniques(dv, cols, [{ columnIndex: orgIdx, operator: "contains", value: "  営業　" }]);
+    check("カスケード: 前後スペース付きでも一致",
+        JSON.stringify(uniqSp[depIdx].slice().sort()) === JSON.stringify(["一課", "二課"].sort()),
+        JSON.stringify(uniqSp[depIdx]));
 }
 
 // ---------------- D: update フロー ----------------
@@ -438,6 +472,14 @@ section("I: 演算子セット（以上/以下は廃止）");
     check("演算子は 2 つだけ（含む/含まない）",
         labels.length === 2 && labels.includes("含む") && labels.includes("含まない"),
         JSON.stringify(labels));
+
+    // 適用時に UI の入力値もトリムされる（見た目とフィルタ値の一致）
+    const cols = v.lastColsRef;
+    const oi = cols.findIndex(c => c.queryName === "T.組織名");
+    v.form.setState([{ columnIndex: oi, operator: "contains", value: "  営業　" }], {});
+    element.querySelector(".fc-apply-btn").click();
+    check("適用時に UI 値がトリムされる", v.form.getConditions()[0].value === "営業",
+        JSON.stringify(v.form.getConditions()));
 }
 
 // ---------------- G: UI ランタイム堅牢性 ----------------

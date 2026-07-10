@@ -74,6 +74,13 @@ export class ConditionForm {
 
     /** 適用発火。スピナーは visual 側が jsonFilters エコー受信まで点灯させる */
     private triggerApply(): void {
+        // 前後空白（全角スペース・改行含む）をトリムして UI とフィルタ値を一致させる
+        let changed = false;
+        for (const c of this.conditions) {
+            const t = c.value.trim();
+            if (t !== c.value) { c.value = t; changed = true; }
+        }
+        if (changed) this.render();
         this.setApplying(true);
         this.cb.onChange();
     }

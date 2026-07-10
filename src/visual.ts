@@ -475,7 +475,8 @@ export class Visual implements IVisual {
     /** タプル値が条件 (op, value) を満たすか（カスケード用、emit と同じ意味論） */
     private evalCond(tv: powerbi.PrimitiveValue, op: FilterOp, value: string): boolean {
         if (tv == null) return false;
-        const hit = String(tv).toLowerCase().includes(value.toLowerCase());
+        // emit と同じトリム正規化（前後空白はコピペ事故が多い）
+        const hit = String(tv).toLowerCase().includes(value.trim().toLowerCase());
         return op === "contains" ? hit : !hit;
     }
 

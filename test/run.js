@@ -126,6 +126,67 @@ section("B: emit/restore（selfFilter・dedupe・echo）");
             f5 && JSON.stringify(f5.f[0].conditions));
     }
 
+    // 内側スペースの全角/半角ゆらぎ対応（バリアント展開）
+    {
+        const calls6 = [];
+        const host6 = { applyJsonFilter: (f, o, p, a) => calls6.push({ f, o, p, a }), persistProperties: () => {} };
+
+        // contains + 内側スペース → 半角/全角の 2 バリアントを Or で発火
+        let r6 = emitAdvancedFilter(host6, cols, [
+            { columnIndex: 0, operator: "contains", value: "東京 支店" },
+        ], {}, "");
+        let f6 = calls6.find(c => c.p === "filter");
+        check("展開: contains 内側スペースは 2 条件 Or",
+            f6 && f6.f[0].conditions.length === 2 && f6.f[0].logicalOperator === "Or"
+            && f6.f[0].conditions.some(c => c.value === "東京 支店")
+            && f6.f[0].conditions.some(c => c.value === "東京　支店"),
+            f6 && JSON.stringify(f6.f[0]));
+
+        // notContains + 内側スペース → 2 バリアントを And で除外
+        calls6.length = 0;
+        emitAdvancedFilter(host6, cols, [
+            { columnIndex: 0, operator: "notContains", value: "東京　支店" },
+        ], {}, "");
+        f6 = calls6.find(c => c.p === "filter");
+        check("展開: notContains は 2 条件 And",
+            f6 && f6.f[0].conditions.length === 2 && f6.f[0].logicalOperator === "And",
+            f6 && JSON.stringify(f6.f[0]));
+
+        // 内側スペース無しは従来通り 1 条件
+        calls6.length = 0;
+        emitAdvancedFilter(host6, cols, [
+            { columnIndex: 0, operator: "contains", value: "東京支店" },
+        ], {}, "");
+        f6 = calls6.find(c => c.p === "filter");
+        check("展開: スペース無しは 1 条件", f6 && f6.f[0].conditions.length === 1,
+            f6 && JSON.stringify(f6.f[0].conditions));
+
+        // 同一列に 2 条件ある場合は展開しない（AdvancedFilter は 1 列 2 条件まで）
+        calls6.length = 0;
+        emitAdvancedFilter(host6, cols, [
+            { columnIndex: 0, operator: "contains", value: "東京 支店" },
+            { columnIndex: 0, operator: "contains", value: "大阪" },
+        ], { "0": "OR" }, "");
+        f6 = calls6.find(c => c.p === "filter");
+        check("展開: 2 条件列では展開しない", f6 && f6.f[0].conditions.length === 2
+            && f6.f[0].conditions.some(c => c.value === "東京 支店"),
+            f6 && JSON.stringify(f6.f[0].conditions));
+
+        // echo 往復: バリアント展開されたフィルタが戻っても UI 条件は 1 つに集約され sig 一致
+        calls6.length = 0;
+        const rEcho = emitAdvancedFilter(host6, cols, [
+            { columnIndex: 0, operator: "contains", value: "東京 支店" },
+        ], {}, "");
+        const fEcho = calls6.find(c => c.p === "filter").f
+            .map(f => { const o = JSON.parse(JSON.stringify(f)); o.filterType = 0; return o; });
+        const restEcho = restoreFromAdvancedFilters(fEcho, cols);
+        check("展開 echo: 復元で 1 条件に集約", restEcho && restEcho.conditions.length === 1
+            && restEcho.conditions[0].value === "東京 支店",
+            restEcho && JSON.stringify(restEcho.conditions));
+        check("展開 echo: sig 一致（ループしない）", restEcho && restEcho.sig === rEcho.sig,
+            restEcho && `${restEcho.sig} vs ${rEcho.sig}`);
+    }
+
     // 演算子と列型の不一致は発火しない（Power BI が filter 異常でビジュアルを壊すため）
     {
         const calls4 = [];
@@ -299,6 +360,31 @@ section("C: extractUniques カスケード");
     check("カスケード: 前後スペース付きでも一致",
         JSON.stringify(uniqSp[depIdx].slice().sort()) === JSON.stringify(["一課", "二課"].sort()),
         JSON.stringify(uniqSp[depIdx]));
+
+    // 内側スペースの全角/半角ゆらぎ: データ全角・入力半角（逆も）で一致
+    {
+        const { v: v3 } = makeVisual();
+        const dvSp = {
+            metadata: { columns: [] },
+            categorical: {
+                categories: [
+                    { source: { queryName: "T.部署名", displayName: "部署名" }, values: ["東京　支店", "大阪 支店", "名古屋支店"] },
+                    { source: { queryName: "T.区分", displayName: "区分" }, values: ["A", "B", "C"] },
+                ],
+            },
+        };
+        const cols3 = v3.resolveColumns(dvSp);
+        const bIdx = cols3.findIndex(c => c.queryName === "T.部署名");
+        const kIdx = cols3.findIndex(c => c.queryName === "T.区分");
+        // 入力は半角スペース、データは全角スペース → 一致するべき
+        let u3 = v3.extractUniques(dvSp, cols3, [{ columnIndex: bIdx, operator: "contains", value: "東京 支店" }]);
+        check("カスケード: 半角入力が全角スペースのデータに一致", JSON.stringify(u3[kIdx]) === JSON.stringify(["A"]),
+            JSON.stringify(u3[kIdx]));
+        // 入力は全角スペース、データは半角スペース → 一致するべき
+        u3 = v3.extractUniques(dvSp, cols3, [{ columnIndex: bIdx, operator: "contains", value: "大阪　支店" }]);
+        check("カスケード: 全角入力が半角スペースのデータに一致", JSON.stringify(u3[kIdx]) === JSON.stringify(["B"]),
+            JSON.stringify(u3[kIdx]));
+    }
 }
 
 // ---------------- D: update フロー ----------------

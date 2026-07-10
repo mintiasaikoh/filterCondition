@@ -168,8 +168,30 @@ function buildFilters(
         }
         if (advConds.length === 0) { dropped.push(ci); continue; }
 
+        // 内側スペースの全角/半角ゆらぎ対応:
+        // 1 条件のみで値に内側空白がある場合、半角/全角の 2 バリアントに展開する
+        // （contains は Or、notContains は And で両方除外）。
+        // 2 条件ある列は AdvancedFilter の 2 条件上限により展開せず exact 比較
+        let logicalOverride: AdvancedFilterLogicalOperators | null = null;
+        if (advConds.length === 1) {
+            const v0 = String((advConds[0] as { value: unknown }).value);
+            if (/[\s　]/.test(v0)) {
+                const half = v0.replace(/[\s　]+/g, " ");
+                const full = v0.replace(/[\s　]+/g, "　");
+                const op0 = (advConds[0] as { operator: AdvancedFilterConditionOperators }).operator;
+                advConds.length = 0;
+                advConds.push(
+                    { operator: op0, value: half } as unknown as IAdvancedFilterCondition,
+                    { operator: op0, value: full } as unknown as IAdvancedFilterCondition,
+                );
+                sigItems.length = 0;
+                sigItems.push(`${op0}:${half}`, `${op0}:${full}`);
+                logicalOverride = condList[0].operator === "contains" ? "Or" : "And";
+            }
+        }
+
         const logical: AdvancedFilterLogicalOperators =
-            logicFor(columnLogic, ci) === "OR" ? "Or" : "And";
+            logicalOverride ?? (logicFor(columnLogic, ci) === "OR" ? "Or" : "And");
 
         const filter = new AdvancedFilter(target, logical, ...advConds);
         filters.push(filter);
@@ -259,12 +281,18 @@ export function restoreFromAdvancedFilters(
 
         const kept = condsRaw.slice(0, 2);
         const logic = (af.logicalOperator || "And") as AdvancedFilterLogicalOperators;
-        if (kept.length >= 2) columnLogic[String(colIdx)] = logic === "Or" ? "OR" : "AND";
+        // sig は集約前の生条件から計算（emit のバリアント展開 sig と一致させる＝echo 安定）
+        const sig = filterConditionSignature(tgt, logic, kept.map(k => k.sigItem));
 
-        restored.push({
-            colIdx, logic, conds: kept,
-            sig: filterConditionSignature(tgt, logic, kept.map(k => k.sigItem)),
-        });
+        // 自分が展開した空白バリアント（同 op・空白畳み込みで同値）は UI 上 1 条件に集約
+        let uiConds = kept;
+        if (kept.length === 2 && kept[0].op === kept[1].op
+            && kept[0].value.replace(/[\s　]+/g, " ") === kept[1].value.replace(/[\s　]+/g, " ")) {
+            uiConds = [{ ...kept[0], value: kept[0].value.replace(/[\s　]+/g, " ") }];
+        }
+        if (uiConds.length >= 2) columnLogic[String(colIdx)] = logic === "Or" ? "OR" : "AND";
+
+        restored.push({ colIdx, logic, conds: uiConds, sig });
     }
     if (restored.length === 0) return null;
 

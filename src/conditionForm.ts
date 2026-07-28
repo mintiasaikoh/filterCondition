@@ -357,7 +357,8 @@ export class ConditionForm {
         del.onclick = () => {
             this.conditions.splice(idx, 1);
             this.render();
-            this.cb.onEdit?.();
+            // 行削除は明示操作なので即適用（残り条件で再発火、最後の 1 行なら remove）
+            this.triggerApply();
         };
         row.appendChild(del);
 

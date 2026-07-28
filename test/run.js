@@ -625,5 +625,63 @@ section("G: UI ランタイム堅牢性");
     }
 }
 
+// ---------------- J: 行削除の即適用とクリアの stale echo 耐性 ----------------
+section("J: 行削除（×）とクリアの競合");
+{
+    const DATA = 2;
+
+    // × ボタンで行を消したら即再発火（最後の 1 行なら remove）
+    {
+        const { v, calls, element } = makeVisual();
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        const cols = v.lastColsRef;
+        const oi = cols.findIndex(c => c.queryName === "T.組織名");
+        v.form.setState([{ columnIndex: oi, operator: "contains", value: "営業" }], {});
+        v.onFormChange();
+        calls.length = 0;
+        element.querySelector(".fc-del-btn").click();
+        check("×: 最後の行削除で filter remove 発火",
+            calls.some(c => c.prop === "filter" && c.f === null && c.action === 1),
+            JSON.stringify(calls.map(c => `${c.prop}:${c.f === null ? "remove" : "merge"}`)));
+    }
+
+    // クリア直後に古いフィルタの stale echo が来ても復活しない
+    {
+        const { v, calls } = makeVisual();
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        const cols = v.lastColsRef;
+        const oi = cols.findIndex(c => c.queryName === "T.組織名");
+        v.form.setState([{ columnIndex: oi, operator: "contains", value: "営業" }], {});
+        v.onFormChange();
+        const oldFilters = calls.find(c => c.prop === "filter").f
+            .map(f => { const o = JSON.parse(JSON.stringify(f)); o.filterType = 0; return o; });
+
+        // クリア（remove 発火）
+        v.form.resetToDefault();
+        v.onFormChange();
+        check("クリア: lastFilterSig 空", v.lastFilterSig === "");
+
+        // stale echo: 消える前の古いフィルタが update に載って届く
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: oldFilters, type: DATA });
+        check("stale echo: UI が復活しない", v.form.getConditions().length === 1
+            && v.form.getConditions()[0].value === "",
+            JSON.stringify(v.form.getConditions()));
+        check("stale echo: lastFilterSig 空のまま", v.lastFilterSig === "");
+
+        // remove が処理されて空 echo が届く → 正常
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        check("空 echo 後も UI クリーン", v.form.getConditions()[0].value === "");
+
+        // その後、真に新しい外部フィルタが来たら通常通り復元される（ガードは解除済み）
+        const newExternal = [{
+            filterType: 0, target: { table: "T", column: "部署" }, logicalOperator: "And",
+            conditions: [{ operator: "Contains", value: "一課" }],
+        }];
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: newExternal, type: DATA });
+        check("新規外部フィルタは復元される", v.form.getConditions().some(c => c.value === "一課"),
+            JSON.stringify(v.form.getConditions()));
+    }
+}
+
 console.log(`\n===== 結果: pass=${pass} fail=${fail} =====`);
 process.exit(fail === 0 ? 0 : 1);

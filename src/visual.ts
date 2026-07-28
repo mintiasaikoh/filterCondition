@@ -38,6 +38,12 @@ export class Visual implements IVisual {
     private awaitingPersist = false;
     /** 適用済み条件（カスケードの根拠）。typing 中の未適用値はここに入れない */
     private appliedConds: FilterCondition[] = [];
+    /**
+     * remove 発火後、消したはずの旧フィルタが stale echo で戻ってきて
+     * クリアを取り消してしまうのを防ぐガード。remove した sig を記憶し、
+     * 同一 sig の受信は無視する（空 echo か別フィルタの受信で解除）
+     */
+    private removedSig = "";
     private uniquesCache: { catRef: unknown; condsSig: string; result: string[][] } | null = null;
     private lastColsRef: unknown = null;
     private lastUniquesRef: unknown = null;
@@ -162,6 +168,10 @@ export class Visual implements IVisual {
         const result = emitAdvancedFilter(
             this.host, cols, conds, columnLogic, this.lastFilterSig,
             this.candidateColIdx(cols), this.selfFilterEnabled());
+        // remove を発火した場合、消した sig を記憶して stale echo を無視できるようにする
+        if (result.emitted && result.sig === "" && this.lastFilterSig !== "") {
+            this.removedSig = this.lastFilterSig;
+        }
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
@@ -344,6 +354,8 @@ export class Visual implements IVisual {
         // 未適用の入力中テキストも Data 更新（ブックマーク含む）時のみ掃除する。
         // resize / style の update では typing 中のテキストを壊さない。
         if (!restored) {
+            // remove が反映された空 echo → stale ガード解除
+            this.removedSig = "";
             // 自分の filter 解除が反映された（remove のエコー）→ スピナー解除
             if (this.pendingApply && isDataUpdate) this.clearPending();
             // 適用済み filter が消えた場合のみ UI リセット。
@@ -364,6 +376,13 @@ export class Visual implements IVisual {
             if (this.pendingApply) this.clearPending();
             return;
         }
+
+        // remove 直後の stale echo（消したはずの旧フィルタが in-flight update で戻ってきた）
+        // → 復元するとクリアが取り消されるので無視。空 echo か別フィルタ受信で解除される
+        if (this.removedSig !== "" && restored.sig === this.removedSig) {
+            return;
+        }
+        this.removedSig = "";
 
         // 有効な active 条件が入ってきたら UI を上書き（ブックマーク含む）
         this.form.setState(restored.conditions, restored.columnLogic);

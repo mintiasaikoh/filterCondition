@@ -683,5 +683,75 @@ section("J: 行削除（×）とクリアの競合");
     }
 }
 
+// ---------------- K: 最終監査で見つけた残件 ----------------
+section("K: 監査残件（bookmark stale echo / 演算子 persist / 同名列）");
+{
+    const DATA = 2;
+
+    // ブックマーク経由のクリア直後に stale echo が来ても復活しない
+    {
+        const { v, calls } = makeVisual();
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        const cols = v.lastColsRef;
+        const oi = cols.findIndex(c => c.queryName === "T.組織名");
+        v.form.setState([{ columnIndex: oi, operator: "contains", value: "営業" }], {});
+        v.onFormChange();
+        const oldFilters = calls.find(c => c.prop === "filter").f
+            .map(f => { const o = JSON.parse(JSON.stringify(f)); o.filterType = 0; return o; });
+
+        // 自分の persist が反映された状態にしてから…
+        const myState = {
+            state: {
+                conditionsJson: JSON.stringify(v.form.getConditions()),
+                columnLogicJson: JSON.stringify(v.form.getColumnLogic()),
+            },
+        };
+        v.update({ dataViews: [makeDv(myState)], jsonFilters: oldFilters, type: DATA });
+
+        // ブックマークで state が空条件に書き換わる（emitCurrent が remove を発火）
+        const bookmarkState = { state: { conditionsJson: "[]", columnLogicJson: "{}" } };
+        v.update({ dataViews: [makeDv(bookmarkState)], jsonFilters: oldFilters, type: DATA });
+        check("bookmark クリア: UI リセット", v.form.getConditions()[0]?.value === "");
+
+        // 直後の stale echo（旧フィルタがまだ載っている update）
+        v.update({ dataViews: [makeDv(bookmarkState)], jsonFilters: oldFilters, type: DATA });
+        check("bookmark 後の stale echo で復活しない", v.form.getConditions()[0]?.value === "",
+            JSON.stringify(v.form.getConditions()));
+        check("bookmark 後: lastFilterSig 空のまま", v.lastFilterSig === "");
+    }
+
+    // 演算子変更（含む⇄含まない）も persist される
+    {
+        const { v, persists, element } = makeVisual();
+        v.update({ dataViews: [makeDv(undefined)], jsonFilters: [], type: DATA });
+        const before = persists.length;
+        const opSel = element.querySelector(".fc-op-sel");
+        opSel.value = "notContains";
+        opSel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+        check("演算子変更で persist される", persists.length > before,
+            `persists: ${before} -> ${persists.length}`);
+    }
+
+    // 別テーブルの同名列はテーブル名を併記して区別（衝突時のみ）
+    {
+        const { v, element } = makeVisual();
+        const dvDup = {
+            metadata: { columns: [] },
+            categorical: {
+                categories: [
+                    { source: { queryName: "案件.備考", displayName: "備考" }, values: ["a"] },
+                    { source: { queryName: "仕入.備考", displayName: "備考" }, values: ["b"] },
+                    { source: { queryName: "案件.組織名", displayName: "組織名" }, values: ["c"] },
+                ],
+            },
+        };
+        v.update({ dataViews: [dvDup], jsonFilters: [], type: DATA });
+        const labels = Array.from(element.querySelectorAll(".fc-col-sel option")).map(o => o.textContent);
+        check("同名列はテーブル名併記", labels.includes("案件.備考") && labels.includes("仕入.備考"),
+            JSON.stringify(labels));
+        check("非衝突列は短いラベルのまま", labels.includes("組織名"), JSON.stringify(labels));
+    }
+}
+
 console.log(`\n===== 結果: pass=${pass} fail=${fail} =====`);
 process.exit(fail === 0 ? 0 : 1);

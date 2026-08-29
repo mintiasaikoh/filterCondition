@@ -128,10 +128,19 @@ export class ConditionForm {
     }
 
     setColumns(cols: powerbi.DataViewMetadataColumn[], uniquesPerCol: string[][] = []): void {
-        this.columns = cols.map((c, i) => ({
-            index: i,
-            label: this.cleanLabel(c, i),
-        }));
+        // 別テーブルの同名列は区別がつかず取り違えの元になるため、
+        // ラベルが衝突した列だけテーブル名を併記する（非衝突列は短いまま）
+        const baseLabels = cols.map((c, i) => this.cleanLabel(c, i));
+        const labelCount = new Map<string, number>();
+        for (const l of baseLabels) labelCount.set(l, (labelCount.get(l) ?? 0) + 1);
+        this.columns = cols.map((c, i) => {
+            let label = baseLabels[i];
+            if ((labelCount.get(label) ?? 0) > 1) {
+                const t = this.tableLabel(c);
+                if (t) label = `${t}.${label}`;
+            }
+            return { index: i, label };
+        });
         this.uniquesPerCol = uniquesPerCol;
         this.rebuildDatalists();
         // 既存条件で列 index が範囲外なら削除
@@ -177,6 +186,18 @@ export class ConditionForm {
             .replace(/^(最初の|最後の|合計|平均|最小|最大|個別カウント|カウント|分散|標準偏差|中央値)\s*/, "")
             .replace(/\s*の(最初|最後|合計|平均|最小|最大|カウント|個数|個別カウント)$/, "")
             .trim() || dn;
+    }
+
+    /** queryName からテーブル名部分を導出（同名列ラベルの区別用） */
+    private tableLabel(c: powerbi.DataViewMetadataColumn): string {
+        const qn = c?.queryName ?? "";
+        const m = qn.match(/^\w+\((.+)\)$/);
+        const inner = m ? m[1] : qn;
+        const br = inner.match(/^'?(.+?)'?\[[^\]]+\]\s*$/);
+        if (br) return br[1];
+        const dot = inner.lastIndexOf(".");
+        if (dot > 0) return inner.substring(0, dot);
+        return "";
     }
 
     setState(conditions: FilterCondition[], columnLogic: ColumnLogic): void {
@@ -325,6 +346,7 @@ export class ConditionForm {
         }
         opSel.onchange = () => {
             cond.operator = opSel.value as FilterOp;
+            this.cb.onEdit?.();
         };
         row.appendChild(opSel);
 

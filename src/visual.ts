@@ -226,6 +226,10 @@ export class Visual implements IVisual {
         const result = emitAdvancedFilter(
             this.host, cols, conds, columnLogic, this.lastFilterSig,
             this.candidateColIdx(cols), this.selfFilterEnabled());
+        // ブックマーク経由の remove も stale echo で取り消されないよう sig を記憶
+        if (result.emitted && result.sig === "" && this.lastFilterSig !== "") {
+            this.removedSig = this.lastFilterSig;
+        }
         if (result.emitted || result.sig !== this.lastFilterSig) {
             this.lastFilterSig = result.sig;
         }
